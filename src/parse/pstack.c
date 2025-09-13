@@ -133,6 +133,9 @@ void pstack_reset(pstack_t *pstack)
 
 void pstack_extend(pstack_t *pstack, uint32_t size)
 {
+#ifdef DEBUG_PSTACK
+    fprintf(stderr, "pstack: extending by %d\n", size);
+#endif
     assert(pstack->capacity < PSTACK_MAX_SIZE);
     size_t new_size = pstack->capacity + size;
     pstack->capacity = new_size;
@@ -146,19 +149,18 @@ void pstack_incr_top(pstack_t *pstack)
 {
     pstack->size++;
     if (pstack->size == pstack->capacity) {
-        pstack_extend(pstack, pstack->capacity / 2);
+        pstack_extend(pstack, pstack->capacity); // double the size of the stack
     }
 }
 
 void pstack_push_frame(pstack_t *pstack, frame_type_t ftype, loc_t loc)
 {
+#ifdef DEBUG_PSTACK
+    fprintf(stderr, "pstack: pushing frame %s\n", frame_str[ftype]);
+#endif
     pstack_elem_t *elem;
     elem = &pstack->data[pstack->size];
-
     elem->frame = pstack->frame;
-    pstack->frame = pstack->size;
-    pstack_incr_top(pstack);
-
     elem->tag = TAG_FRAME;
     elem->value.frame_type = ftype;
     elem->loc = loc;
@@ -166,41 +168,53 @@ void pstack_push_frame(pstack_t *pstack, frame_type_t ftype, loc_t loc)
     if (frame_pushes_var_scope(ftype)) {
         moxi_push_scope(&pstack->ctx);
     }
+
+    pstack->frame = pstack->size;
+    pstack_incr_top(pstack);
 }
 
 void pstack_push_attr(pstack_t *pstack, token_type_t attr, loc_t loc)
 {
+#ifdef DEBUG_PSTACK
+    fprintf(stderr, "pstack: pushing attr\n");
+#endif
     assert(attr >= TOK_KW_INPUT && attr <= TOK_KW_UNKNOWN);
 
     pstack_elem_t *elem;
     elem = &pstack->data[pstack->size];
-    pstack_incr_top(pstack);
-
     elem->tag = TAG_ATTR;
     elem->value.tok = attr;
     elem->loc = loc;
+
+    pstack_incr_top(pstack);
 }
 
 void pstack_push_term(pstack_t *pstack, term_t term, loc_t loc)
 {
+#ifdef DEBUG_PSTACK
+    fprintf(stderr, "pstack: pushing term\n");
+#endif
     pstack_elem_t *elem;
     elem = &pstack->data[pstack->size];
-    pstack_incr_top(pstack);
-
     elem->tag = TAG_TERM;
     elem->value.sort = term;
     elem->loc = loc;
+
+    pstack_incr_top(pstack);
 }
 
 void pstack_push_sort(pstack_t *pstack, sort_t sort, loc_t loc)
 {
+#ifdef DEBUG_PSTACK
+    fprintf(stderr, "pstack: pushing sort\n");
+#endif
     pstack_elem_t *elem;
     elem = &pstack->data[pstack->size];
-    pstack_incr_top(pstack);
-
     elem->tag = TAG_SORT;
     elem->value.sort = sort;
     elem->loc = loc;
+
+    pstack_incr_top(pstack);
 }
 
 void pstack_push_sort_constructor(pstack_t *pstack, int32_t constr, loc_t loc)
@@ -216,46 +230,57 @@ void pstack_push_sort_constructor(pstack_t *pstack, int32_t constr, loc_t loc)
 
 void pstack_push_string(pstack_t *pstack, char_buffer_t *str, loc_t loc)
 {
+#ifdef DEBUG_PSTACK
+    fprintf(stderr, "pstack: pushing string\n");
+#endif
     pstack_elem_t *elem;
     elem = &pstack->data[pstack->size];
-    pstack_incr_top(pstack);
-
     elem->tag = TAG_SYMBOL;
     size_t len = str->len;
     elem->value.str = malloc(len + 1 * sizeof(char));
     strncpy(elem->value.str, str->data, len + 1);
     elem->loc = loc;
+
+    pstack_incr_top(pstack);
 }
 
 void pstack_push_numeral(pstack_t *pstack, char_buffer_t *str, loc_t loc)
 {
+#ifdef DEBUG_PSTACK
+    fprintf(stderr, "pstack: pushing numeral\n");
+#endif
     pstack_elem_t *elem;
     elem = &pstack->data[pstack->size];
-    pstack_incr_top(pstack);
-
     elem->tag = TAG_NUMERAL;
     elem->value.numeral = atol(str->data);
     elem->loc = loc;
+
+    pstack_incr_top(pstack);
 }
 
 void pstack_push_decimal(pstack_t *pstack, char_buffer_t *str, loc_t loc)
 {
+#ifdef DEBUG_PSTACK
+    fprintf(stderr, "pstack: pushing decimal\n");
+#endif
     pstack_elem_t *elem;
     elem = &pstack->data[pstack->size];
-    pstack_incr_top(pstack);
-
     elem->tag = TAG_DECIMAL;
     size_t len = str->len;
     elem->value.str = malloc(len + 1 * sizeof(char));
     strncpy(elem->value.str, str->data, len + 1);
     elem->loc = loc;
+
+    pstack_incr_top(pstack);
 }
 
 void pstack_push_binary(pstack_t *pstack, char_buffer_t *str, loc_t loc)
 {
+#ifdef DEBUG_PSTACK
+    fprintf(stderr, "pstack: pushing binary\n");
+#endif
     pstack_elem_t *elem;
     elem = &pstack->data[pstack->size];
-    pstack_incr_top(pstack);
 
     int status;
 
@@ -268,13 +293,17 @@ void pstack_push_binary(pstack_t *pstack, char_buffer_t *str, loc_t loc)
         longjmp(pstack->env, BAD_TERM);
     }
     elem->loc = loc;
+
+    pstack_incr_top(pstack);
 }
 
 void pstack_push_hex(pstack_t *pstack, char_buffer_t *str, loc_t loc)
 {
+#ifdef DEBUG_PSTACK
+    fprintf(stderr, "pstack: pushing hex\n");
+#endif
     pstack_elem_t *elem;
     elem = &pstack->data[pstack->size];
-    pstack_incr_top(pstack);
 
     int status;
 
@@ -287,44 +316,67 @@ void pstack_push_hex(pstack_t *pstack, char_buffer_t *str, loc_t loc)
         longjmp(pstack->env, BAD_TERM);
     }
     elem->loc = loc;
+
+    pstack_incr_top(pstack);
 }
 
 void pstack_push_quantifier(pstack_t *pstack, token_type_t quant, loc_t loc)
 {
+#ifdef DEBUG_PSTACK
+    fprintf(stderr, "pstack: pushing quantifier\n");
+#endif
     assert(quant == TOK_RW_FORALL || quant == TOK_RW_EXISTS);
 
     pstack_elem_t *elem;
     elem = &pstack->data[pstack->size];
-    pstack_incr_top(pstack);
-
     elem->tag = TAG_QUANTIFIER;
     elem->value.tok = quant;
     elem->loc = loc;
 
     moxi_push_scope(&pstack->ctx);
+
+    pstack_incr_top(pstack);
 }
 
 void pstack_push_let(pstack_t *pstack, loc_t loc)
 {
+#ifdef DEBUG_PSTACK
+    fprintf(stderr, "pstack: pushing let\n");
+#endif
     pstack_elem_t *elem;
-    elem = &pstack->data[pstack->size];
-    pstack_incr_top(pstack);
-
+    elem = &pstack->data[pstack->size];     
     elem->tag = TAG_LET_BINDER;
     elem->value.tok = TOK_RW_LET;
     elem->loc = loc;
 
     moxi_push_scope(&pstack->ctx);
+    pstack_incr_top(pstack);
+}
+
+void pstack_push_as(pstack_t *pstack, loc_t loc)
+{
+#ifdef DEBUG_PSTACK
+    fprintf(stderr, "pstack: pushing as\n");
+#endif
+    pstack_elem_t *elem;
+    elem = &pstack->data[pstack->size];
+    elem->tag = TAG_AS;
+    elem->loc = loc;
+
+    pstack_incr_top(pstack);
 }
 
 void pstack_push_error(pstack_t *pstack, loc_t loc)
 {
+#ifdef DEBUG_PSTACK
+    fprintf(stderr, "pstack: pushing error\n");
+#endif
     pstack_elem_t *elem;
     elem = &pstack->data[pstack->size];
-    pstack_incr_top(pstack);
-
     elem->tag = TAG_ERROR;
     elem->loc = loc;
+
+    pstack_incr_top(pstack);
 }
 
 void pstack_pop(pstack_t *pstack, uint32_t n)
@@ -649,15 +701,18 @@ void eval_apply_term(pstack_t *pstack)
         longjmp(pstack->env, BAD_SYMBOL_KIND);
     }
 
-    if (!yices_term_is_function(app)) {
-        // Then this is a constant
-        check_frame_size_eq(pstack, 2);
+    uint32_t nargs = pstack_top_frame_size(pstack) - 2;
+
+    // If the term is not a function or has no arguments, then we can just push
+    // the term
+    if (!yices_term_is_function(app) || nargs == 0) {
+        check_frame_size_eq(pstack, 2); 
         pstack_pop_frame(pstack);
         pstack_push_term(pstack, app, loc);
         return;
     }
-    // Then `symbol` is a defined/declared function
-    uint32_t nargs = pstack_top_frame_size(pstack) - 2;
+    // Then `symbol` is a defined/declared function and we need to construct the
+    // application
     term_t term, args[nargs];
 
     for (size_t i = 2; i < pstack_top_frame_size(pstack); ++i) {
@@ -667,6 +722,7 @@ void eval_apply_term(pstack_t *pstack)
 
     term = yices_application(app, nargs, args);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct term");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_TERM);
     }
@@ -758,6 +814,7 @@ void eval_not_term(pstack_t *pstack)
     term_t arg = get_elem_term(pstack, 2);
     term_t term = yices_not(arg);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct not");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_TERM);
     }
@@ -785,6 +842,7 @@ void eval_eq_term(pstack_t *pstack)
                                         get_elem_term(pstack, i + 1)));
     }
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct =");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_TERM);
     }
@@ -839,6 +897,7 @@ void eval_ite_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 4);
     term_t term = yices_ite(cond, lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct ite");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_TERM);
     }
@@ -864,6 +923,7 @@ void eval_and_term(pstack_t *pstack)
     }
     term_t term = yices_and(nargs, args);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct and");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -889,6 +949,7 @@ void eval_or_term(pstack_t *pstack)
     }
     term_t term = yices_or(nargs, args);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct or");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -914,6 +975,7 @@ void eval_xor_term(pstack_t *pstack)
     }
     term_t term = yices_xor(nargs, args);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct xor");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -940,6 +1002,7 @@ void eval_implies_term(pstack_t *pstack)
         term = yices_implies(term, get_elem_term(pstack, i));
     }
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct implies");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_TERM);
     }
@@ -966,6 +1029,7 @@ void eval_add_term(pstack_t *pstack)
     }
     term_t term = yices_sum(nargs, args);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct sum");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -992,6 +1056,7 @@ void eval_mul_term(pstack_t *pstack)
     }
     term_t term = yices_product(nargs, args);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct product");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1025,6 +1090,7 @@ void eval_minus_term(pstack_t *pstack)
             term = yices_sub(arg, term);
         }
         if (term == NULL_TERM) {
+            PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct sub");
             yices_print_error(stderr);
             longjmp(pstack->env, BAD_TERM);
         }
@@ -1037,6 +1103,7 @@ void eval_minus_term(pstack_t *pstack)
     term_t arg = get_elem_term(pstack, 2);
     term_t term = yices_neg(arg);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct neg");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1064,6 +1131,7 @@ void eval_idiv_term(pstack_t *pstack)
         term = yices_idiv(arg, term);
     }
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct idiv");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_TERM);
     }
@@ -1091,6 +1159,7 @@ void eval_rdiv_term(pstack_t *pstack)
         term = yices_division(arg, term);
     }
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct division");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_TERM);
     }
@@ -1115,6 +1184,7 @@ void eval_mod_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_imod(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct imod");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_TERM);
     }
@@ -1137,6 +1207,7 @@ void eval_abs_term(pstack_t *pstack)
     arg = get_elem_term(pstack, 2);
     term_t term = yices_abs(arg);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct abs");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_TERM);
     }
@@ -1167,6 +1238,7 @@ void eval_arith_gt_term(pstack_t *pstack)
         term = yices_and2(term, yices_arith_gt_atom(arg1, arg2));
     }
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct >");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_TERM);
     }
@@ -1197,6 +1269,7 @@ void eval_arith_ge_term(pstack_t *pstack)
         term = yices_and2(term, yices_arith_geq_atom(arg1, arg2));
     }
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct >=");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_TERM);
     }
@@ -1227,6 +1300,7 @@ void eval_arith_lt_term(pstack_t *pstack)
         term = yices_and2(term, yices_arith_lt_atom(arg1, arg2));
     }
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct <");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_TERM);
     }
@@ -1257,6 +1331,7 @@ void eval_arith_le_term(pstack_t *pstack)
         term = yices_and2(term, yices_arith_leq_atom(arg1, arg2));
     }
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct <=");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_TERM);
     }
@@ -1280,6 +1355,7 @@ void eval_divisible_term(pstack_t *pstack)
     term_t arg = get_elem_term(pstack, 3);
     term_t term = yices_divides_atom(n, arg);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct divisible");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_TERM);
     }
@@ -1304,6 +1380,7 @@ void eval_concat_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvconcat2(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct concat");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1337,6 +1414,7 @@ void eval_bvextract_term(pstack_t *pstack)
     arg = get_elem_term(pstack, 4);
     term_t term = yices_bvextract(arg, j, i);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct extract");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1360,6 +1438,7 @@ void eval_repeat_term(pstack_t *pstack)
     term_t arg = get_elem_term(pstack, 3);
     term_t term = yices_bvrepeat(arg, n);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct repeat");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1384,6 +1463,7 @@ void eval_bvcomp_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bveq_atom(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvcomp");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1402,6 +1482,7 @@ void eval_bvredand_term(pstack_t *pstack)
     term_t arg = get_elem_term(pstack, 2);
     term_t term = yices_redand(arg);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvredand");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1420,6 +1501,7 @@ void eval_bvredor_term(pstack_t *pstack)
     term_t arg = get_elem_term(pstack, 2);
     term_t term = yices_redor(arg);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvredor");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1441,6 +1523,7 @@ void eval_bvnot_term(pstack_t *pstack)
     term_t arg = get_elem_term(pstack, 2);
     term_t term = yices_bvnot(arg);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvnot");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1468,6 +1551,7 @@ void eval_bvand_term(pstack_t *pstack)
     }
     term_t term = yices_bvand(nargs, args);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvand");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1495,6 +1579,7 @@ void eval_bvor_term(pstack_t *pstack)
     }
     term_t term = yices_bvor(nargs, args);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvor");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1519,6 +1604,7 @@ void eval_bvnand_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvnand(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvnand");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1543,6 +1629,7 @@ void eval_bvnor_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvnor(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvnor");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1564,6 +1651,7 @@ void eval_bvxor_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvxor2(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvxor");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1585,6 +1673,7 @@ void eval_bvxnor_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvxnor(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvxnor");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1603,6 +1692,7 @@ void eval_bvneg_term(pstack_t *pstack)
     term_t arg = get_elem_term(pstack, 2);
     term_t term = yices_bvneg(arg);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvneg");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1630,6 +1720,7 @@ void eval_bvadd_term(pstack_t *pstack)
     }
     term_t term = yices_bvsum(nargs, args);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvadd");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1651,6 +1742,7 @@ void eval_bvsub_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvsub(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvsub");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1678,6 +1770,7 @@ void eval_bvmul_term(pstack_t *pstack)
     }
     term_t term = yices_bvproduct(nargs, args);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvmul");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1699,6 +1792,7 @@ void eval_bvudiv_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvdiv(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvudiv");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1720,6 +1814,7 @@ void eval_bvurem_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvrem(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvurem");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1741,6 +1836,7 @@ void eval_bvsdiv_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvsdiv(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvsdiv");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1762,6 +1858,7 @@ void eval_bvsrem_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvsrem(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvsrem");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1783,6 +1880,7 @@ void eval_bvsmod_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvsmod(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvsmod");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1804,6 +1902,7 @@ void eval_bvshl_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvshl(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvshl");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1825,6 +1924,7 @@ void eval_bvlshr_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvlshr(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvlshr");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1846,6 +1946,7 @@ void eval_bvashr_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvashr(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvashr");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1869,6 +1970,7 @@ void eval_zero_extend_term(pstack_t *pstack)
     term_t arg = get_elem_term(pstack, 3);
     term_t term = yices_zero_extend(arg, n);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct zero_extend");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1892,6 +1994,7 @@ void eval_sign_extend_term(pstack_t *pstack)
     term_t arg = get_elem_term(pstack, 3);
     term_t term = yices_sign_extend(arg, n);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct sign_extend");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1915,6 +2018,7 @@ void eval_rotate_left_term(pstack_t *pstack)
     term_t arg = get_elem_term(pstack, 3);
     term_t term = yices_rotate_left(arg, n);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct rotate_left");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1938,6 +2042,7 @@ void eval_rotate_right_term(pstack_t *pstack)
     term_t arg = get_elem_term(pstack, 3);
     term_t term = yices_rotate_right(arg, n);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct rotate_right");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1959,6 +2064,7 @@ void eval_bvult_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvlt_atom(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvult");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -1980,6 +2086,7 @@ void eval_bvule_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvle_atom(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvule");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -2001,6 +2108,7 @@ void eval_bvugt_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvgt_atom(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvugt");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -2022,6 +2130,7 @@ void eval_bvuge_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvge_atom(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvuge");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -2043,6 +2152,7 @@ void eval_bvslt_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvslt_atom(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvslt");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -2064,6 +2174,7 @@ void eval_bvsle_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvsle_atom(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvsle");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -2085,6 +2196,7 @@ void eval_bvsgt_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvsgt_atom(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvsgt");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -2106,6 +2218,7 @@ void eval_bvsge_term(pstack_t *pstack)
     rhs = get_elem_term(pstack, 3);
     term_t term = yices_bvsge_atom(lhs, rhs);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct bvsge");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_SORT);
     }
@@ -2129,6 +2242,7 @@ void eval_select_term(pstack_t *pstack)
     term_t index = get_elem_term(pstack, 3);
     term_t term = yices_application1(array, index);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct select");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_TERM);
     }
@@ -2154,6 +2268,7 @@ void eval_store_term(pstack_t *pstack)
     term_t elem = get_elem_term(pstack, 4);
     term_t term = yices_update1(array, index, elem);
     if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct store");
         yices_print_error(stderr);
         longjmp(pstack->env, BAD_TERM);
     }
@@ -2183,7 +2298,7 @@ void eval_term(pstack_t *pstack)
     case TAG_BITVEC:
     {
         if (!logic_has_bitvectors[logic]) {
-            PRINT_ERROR("bitvector literals require bitvector logic");
+            PRINT_ERROR_LOC(pstack->filename, loc, "bitvector literals require bitvector logic");
             longjmp(pstack->env, BAD_LOGIC);
         }
         check_frame_size_eq(pstack, 2);
@@ -2195,7 +2310,7 @@ void eval_term(pstack_t *pstack)
     case TAG_NUMERAL:
     {
         if (!logic_has_ints[logic] && !logic_has_reals[logic]) {
-            PRINT_ERROR("integer literals require valid logic");
+            PRINT_ERROR_LOC(pstack->filename, loc, "integer literals require valid logic");
             longjmp(pstack->env, BAD_LOGIC);
         }
         check_frame_size_eq(pstack, 2);
@@ -2219,6 +2334,7 @@ void eval_term(pstack_t *pstack)
         pstack_pop_frame(pstack);
         term_t term = yices_parse_float(decimal);
         if (term == NULL_TERM) {
+            PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct decimal");
             yices_print_error(stderr);
             longjmp(pstack->env, BAD_TERM);
         }
@@ -2229,7 +2345,7 @@ void eval_term(pstack_t *pstack)
     {
         // [ <term-frame> "forall" (<symbol> <sort>)+ <term> ]
         if (!logic_has_quantifiers[logic]) {
-            PRINT_ERROR("quantifiers require quantifier-valid logic");
+            PRINT_ERROR_LOC(pstack->filename, loc, "quantifiers require quantifier-valid logic");
             longjmp(pstack->env, BAD_LOGIC);
         }
 
@@ -2245,6 +2361,7 @@ void eval_term(pstack_t *pstack)
         term_t body = get_elem_term(pstack, pstack_top_frame_size(pstack) - 1);
         term_t term = yices_forall(scope->size, vars, body);
         if (term == NULL_TERM) {
+            PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct forall");
             yices_print_error(stderr);
             longjmp(pstack->env, BAD_TERM);
         }
@@ -2284,8 +2401,11 @@ void eval_term(pstack_t *pstack)
         eval_apply_term(pstack);
         break;
     }
+    case TAG_AS: {
+
+    }
     default:
-        PRINT_ERROR("bad tag");
+        PRINT_ERROR_LOC(pstack->filename, loc, "bad tag");
         longjmp(pstack->env, BAD_TAG);
     }
 }
@@ -2459,7 +2579,7 @@ void eval_define_system(pstack_t *pstack)
             init = yices_and2(init, get_elem_term(pstack, i+1));
             if (init == NULL_TERM) {
                 yices_print_error(stderr);
-                PRINT_ERROR("bad init term");
+                PRINT_ERROR("bad init term for system %s", symbol);
                 longjmp(pstack->env, BAD_TERM);
             }
             i += 2;
@@ -2470,7 +2590,7 @@ void eval_define_system(pstack_t *pstack)
             trans = yices_or2(trans, get_elem_term(pstack, i+1));
             if (init == NULL_TERM) {
                 yices_print_error(stderr);
-                PRINT_ERROR("bad trans term");
+                PRINT_ERROR("bad trans term for system %s", symbol);
                 longjmp(pstack->env, BAD_TERM);
             }
             i += 2;
@@ -2481,7 +2601,7 @@ void eval_define_system(pstack_t *pstack)
             inv = yices_and2(inv, get_elem_term(pstack, i+1));
             if (init == NULL_TERM) {
                 yices_print_error(stderr);
-                PRINT_ERROR("bad inv term");
+                PRINT_ERROR("bad inv term for system %s", symbol);
                 longjmp(pstack->env, BAD_TERM);
             }
             i += 2;

@@ -143,7 +143,7 @@ void init_context(moxi_context_t *ctx)
     ctx->type_var_id = 0;
     init_str_map(&ctx->var_table, 0, default_delete_entry);
     init_str_map(&ctx->sys_table, 0, delete_sys_table_entry);
-    init_stack(&ctx->scope_stack, delete_var_stack_entry);
+    init_ptr_stack(&ctx->scope_stack, delete_var_stack_entry);
     init_str_vector(&ctx->type_var_symbols, 16);
     ctx->logic = &no_logic;
     activate_core_symbols(ctx);
@@ -153,7 +153,7 @@ void delete_context(moxi_context_t *ctx)
 {
     delete_str_map(&ctx->var_table);
     delete_str_map(&ctx->sys_table);
-    delete_stack(&ctx->scope_stack);
+    delete_ptr_stack(&ctx->scope_stack);
 }
 
 theory_symbol_type_t get_theory_symbol_type(const moxi_context_t *ctx, const char *symbol)
@@ -233,7 +233,7 @@ void moxi_set_logic(moxi_context_t *ctx, char *symbol)
 void moxi_declare_fun(moxi_context_t *ctx, char *symbol, size_t nargs,
                      sort_t *args, sort_t ret)
 {
-    if (is_active_theory_term(ctx, symbol)) {
+    if (is_active_term(ctx, symbol)) {
         ctx->status = 1;
         return;
     }
@@ -265,12 +265,12 @@ void moxi_push_scope(moxi_context_t *ctx)
 {
     str_vector_t *vec = malloc(sizeof(str_vector_t));
     init_str_vector(vec, 16);
-    stack_push(&ctx->scope_stack, vec);
+    ptr_stack_push(&ctx->scope_stack, vec);
 }
 
 void moxi_pop_scope(moxi_context_t *ctx)
 {
-    str_vector_t *vec = stack_pop(&ctx->scope_stack);
+    str_vector_t *vec = ptr_stack_pop(&ctx->scope_stack);
     size_t i;
     for (i = 0; i < vec->size; ++i) {
         str_map_remove(&ctx->var_table, vec->data[i]);
@@ -282,7 +282,7 @@ void moxi_pop_scope(moxi_context_t *ctx)
 
 str_vector_t *moxi_get_scope(moxi_context_t *ctx)
 {
-    return stack_top(&ctx->scope_stack);
+    return ptr_stack_top(&ctx->scope_stack);
 }
 
 void moxi_clear_type_vars(moxi_context_t *ctx)
@@ -312,7 +312,7 @@ void moxi_add_named_term(moxi_context_t *ctx, char *symbol, term_t term, var_kin
     new_var_entry->is_primed = false;
     str_map_add(&ctx->var_table, symbol, strlen(symbol), new_var_entry);
 
-    str_vector_t *scope = stack_top(&ctx->scope_stack);
+    str_vector_t *scope = ptr_stack_top(&ctx->scope_stack);
     str_vector_append(scope, symbol);
 
     yices_set_term_name(term, symbol);
