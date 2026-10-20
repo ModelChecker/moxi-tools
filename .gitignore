@@ -3,3 +3,4 @@ src/parse/hash_*
 moxisc
 tmp/
 *.code-workspace
+.cache/
