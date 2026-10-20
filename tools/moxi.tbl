@@ -243,7 +243,10 @@ TRM4b       TOK_NUMERAL     TRM4b       consume     _           { pstack_push_nu
 TRM4b       TOK_RP          TRM1        consume     TRM3
 
 // After "( as"
-TRM5        TOK_SYMBOL          SRT0        consume     R0
+// Like "(_ extract n n)", the ')' after the sort does not finish the term;
+// arguments such as the fill value of ((as const (Array σ τ)) v) follow.
+TRM5        TOK_SYMBOL          SRT0        consume     TRM5r   { pstack_push_as(pstack, loc); pstack_push_string(pstack, str, loc); }
+TRM5r       TOK_RP              TRM1        consume     TRM3
 TRM5        TOK_LP              TRM5a       consume     _
 TRM5a       TOK_RW_UNDERSCORE   TRM5b       consume     _
 TRM5b       TOK_SYMBOL          TRM5c       consume     _
@@ -268,7 +271,7 @@ TRM7a       TOK_RP      DONE        consume     _
 
 // After "(("   
 TRM8        TOK_RW_UNDERSCORE   TRM4       consume     _
-TRM8        TOK_RW_AS           TRM5       consume     TRM8a,TRM1
+TRM8        TOK_RW_AS           TRM5       consume     _
 TRM8a       TOK_RP              DONE       consume     _
 TRM8a       *                   TRM1       pass        _
 

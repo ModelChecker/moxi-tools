@@ -31,6 +31,7 @@ const char *tag_str[NUM_TAGS] = {
     "<term>",        // TAG_TERM
     "<quantifier>",  // TAG_QUANTIFIER
     "<let-binder>",  // TAG_LET_BINDER
+    "<as>",          // TAG_AS
     "<error>",       // TAG_ERROR
 };
 
@@ -2274,10 +2275,83 @@ void eval_store_term(pstack_t *pstack)
 }
 
 /**
+ * SMT-LIB qualified identifiers and array constants:
+ *
+ *   ((as const (Array σ τ)) v)  — constant array of sort (Array σ τ) filled with v
+ *
+ * Yices 2.6 has no yices_const_array, so this is the lambda (λx:σ. v).
+ *
+ * [ <term-frame> <as> <symbol> <sort> <term>* ]
+ */
+void eval_as_term(pstack_t *pstack)
+{
+#ifdef DEBUG_PSTACK
+    fprintf(stderr, "pstack: evaluating as term\n");
+#endif
+    moxi_context_t *ctx = &pstack->ctx;
+    loc_t loc = pstack_top_frame_loc(pstack);
+    logic_type_t logic = ctx->logic->type;
+
+    check_frame_size_geq(pstack, 4);
+    check_elem_tag(pstack, 2, TAG_SYMBOL);
+    check_elem_tag(pstack, 3, TAG_SORT);
+
+    char *symbol = get_elem_symbol(pstack, 2);
+    sort_t sort = get_elem_sort(pstack, 3);
+
+    if (strcmp(symbol, "const") != 0) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "unsupported as constructor %s",
+                        symbol);
+        longjmp(pstack->env, BAD_TERM);
+    }
+    if (!logic_has_arrays[logic]) {
+        PRINT_ERROR_LOC(pstack->filename, loc,
+                        "array constants require an array logic");
+        longjmp(pstack->env, BAD_LOGIC);
+    }
+    if (!yices_type_is_function(sort) || yices_type_num_children(sort) != 2) {
+        PRINT_ERROR_LOC(pstack->filename, loc,
+                        "const requires a unary Array sort");
+        longjmp(pstack->env, BAD_SORT);
+    }
+    if (pstack_top_frame_size(pstack) != 5) {
+        PRINT_ERROR_LOC(pstack->filename, loc,
+                        "array constant requires a single element term");
+        longjmp(pstack->env, BAD_TERM);
+    }
+    check_elem_tag(pstack, 4, TAG_TERM);
+
+    sort_t index = yices_type_child(sort, 0);
+    sort_t elem = yices_type_child(sort, 1);
+    term_t value = get_elem_term(pstack, 4);
+    if (!yices_compatible_types(elem, yices_type_of_term(value))) {
+        PRINT_ERROR_LOC(pstack->filename, loc,
+                        "array constant element sort mismatch");
+        longjmp(pstack->env, BAD_SORT);
+    }
+
+    term_t var = yices_new_variable(index);
+    term_t term = yices_lambda(1, &var, value);
+    if (term == NULL_TERM) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct array constant");
+        yices_print_error(stderr);
+        longjmp(pstack->env, BAD_TERM);
+    }
+    if (!yices_compatible_types(sort, yices_type_of_term(term))) {
+        PRINT_ERROR_LOC(pstack->filename, loc, "array constant sort mismatch");
+        longjmp(pstack->env, BAD_SORT);
+    }
+
+    pstack_pop_frame(pstack);
+    pstack_push_term(pstack, term, loc);
+}
+
+/**
  * [ <term-frame> <bitvec> ]
  * [ <term-frame> <int> ]
  * [ <term-frame> <real> ]
  * [ <term-frame> <symbol> <term>* ]
+ * [ <term-frame> <as> <symbol> <sort> <term>* ]
  */
 void eval_term(pstack_t *pstack)
 {
@@ -2403,9 +2477,9 @@ void eval_term(pstack_t *pstack)
         eval_apply_term(pstack);
         break;
     }
-    case TAG_AS: {
-
-    }
+    case TAG_AS:
+        eval_as_term(pstack);
+        break;
     default:
         PRINT_ERROR_LOC(pstack->filename, loc, "bad tag");
         longjmp(pstack->env, BAD_TAG);

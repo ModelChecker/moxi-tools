@@ -4,3 +4,4 @@ moxisc
 tmp/
 *.code-workspace
 .cache/
+build/

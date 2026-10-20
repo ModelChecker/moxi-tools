@@ -1,0 +1,3 @@
+(set-logic QF_ABV)
+(define-fun c () (Array (_ BitVec 3) (_ BitVec 3)) ((as const (Array (_ BitVec 3) (_ BitVec 3))) #b000))
+(define-fun z () (_ BitVec 3) (select c #b001))
