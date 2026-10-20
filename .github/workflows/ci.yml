@@ -20,21 +20,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang gperf python3 autoconf gcc make libgmp-dev
+
       - name: Cache Yices
         id: cache-yices
         uses: actions/cache@v4
         with:
           path: ${{ env.YICES_PREFIX }}
-          key: yices-${{ env.YICES_VERSION }}-${{ runner.os }}-${{ runner.arch }}
+          key: yices-${{ env.YICES_VERSION }}-src-${{ runner.os }}-${{ runner.arch }}
 
-      - name: Install Yices
+      - name: Build Yices
         if: steps.cache-yices.outputs.cache-hit != 'true'
         run: |
-          curl -fsSL -o yices.tar.gz \
-            https://github.com/SRI-CSL/yices2/releases/download/yices-${YICES_VERSION}/yices-${YICES_VERSION}-x86_64-pc-linux-gnu-static-gmp.tar.gz
-          tar -xzf yices.tar.gz
-          (cd "yices-${YICES_VERSION}" && ./install-yices "$YICES_PREFIX")
-          rm -rf yices.tar.gz "yices-${YICES_VERSION}"
+          git clone https://github.com/SRI-CSL/yices2.git yices2-src
+          git -C yices2-src checkout "yices-${YICES_VERSION}"
+          (
+            cd yices2-src
+            autoconf
+            ./configure --prefix="$YICES_PREFIX"
+            make -j"$(nproc)"
+            make install
+          )
+          rm -rf yices2-src
 
       - name: Configure Yices environment
         run: |
@@ -43,11 +53,6 @@ jobs:
           echo "LIBRARY_PATH=$YICES_PREFIX/lib" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$YICES_PREFIX/lib" >> "$GITHUB_ENV"
           echo "LDFLAGS=-L$YICES_PREFIX/lib -Wl,-rpath,$YICES_PREFIX/lib" >> "$GITHUB_ENV"
-
-      - name: Install build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang gperf python3
 
       - name: Build
         run: make -j"$(nproc)"
