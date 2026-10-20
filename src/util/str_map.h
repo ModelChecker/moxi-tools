@@ -29,9 +29,9 @@ struct str_map_entry {
  * map[size] = <"C",value> -> <"D",value> -> ... -> NULL
  */
 typedef struct str_map {
-    str_map_entry_t **data;
     uint32_t capacity;
     void (*delete_value)(void *);
+    str_map_entry_t **data;
 } str_map_t;
 
 #define DEFAULT_STR_MAP_SIZE 128

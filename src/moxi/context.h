@@ -8,27 +8,14 @@
 #include <yices.h>
 
 #include "moxi/logic.h"
+#include "moxi/command.h"
 #include "parse/token.h"
 #include "util/ptr_stack.h"
-#include "util/str_int_map.h"
 #include "util/str_map.h"
 #include "util/str_vector.h"
 
 // A MoXI sort is a Yices type
-typedef type_t sort_t;
-
-// typedef struct sort_table_entry {
-//     char *symbol;
-//     size_t len;
-//     theory_symbol_type_t thy_sym_type;
-// } sort_table_entry_t;
-
-// typedef struct term_table_entry {
-//     char *symbol;
-//     size_t len;
-//     theory_symbol_type_t thy_sym_type;
-//     bool is_var;
-// } term_table_entry_t;
+// typedef type_t sort_t;
 
 typedef enum {
     INPUT_VAR,
@@ -54,11 +41,14 @@ typedef struct sys_table_entry {
     char *name;
     size_t len;
     size_t ninput;
-    sort_t *input;
+    term_t *input;
+    term_t *input_next;
     size_t noutput;
-    sort_t *output;
+    term_t *output;
+    term_t *output_next;
     size_t nlocal;
-    sort_t *local;
+    term_t *local;
+    term_t *local_next;
 } sys_table_entry_t;
 
 /**
@@ -69,7 +59,7 @@ typedef struct sys_table_entry {
  */
 typedef struct moxi_context {
     int status;
-    uint32_t type_var_id;
+    uint32_t sort_var_id;
     const logic_t *logic;
     bool active_theory_symbols[NUM_THEORY_SYMBOLS];
 
@@ -85,8 +75,14 @@ typedef struct moxi_context {
     // in the top vector are removed from the context.
     ptr_stack_t scope_stack;
 
-    // Stores the symbols of all type variables
-    str_vector_t type_var_symbols;
+    // Stores the symbols of all sort variables
+    str_vector_t sort_var_symbols;
+
+    // Most recently-processed command type
+    cmd_type_t cur_cmd_type;
+
+    // Most recently-processed command
+    command_t cur_cmd;
 } moxi_context_t;
 
 void init_context(moxi_context_t *ctx);
@@ -101,30 +97,39 @@ bool is_active_sort(const moxi_context_t *ctx, const char *symbol);
 theory_symbol_type_t get_theory_symbol_type(const moxi_context_t *ctx, const char *symbol);
 
 /*******************************************************************************
- * Term Management
- *
- * - Add functions/constants to the context.
- * - Find terms in the context.
- ******************************************************************************/
-void moxi_declare_fun(moxi_context_t *ctx, char *symbol, size_t nargs,
-                      sort_t *args, sort_t ret);
-void moxi_define_fun(moxi_context_t *ctx, char *symbol, size_t nargs,
-                     sort_t *args, sort_t ret, term_t body);
-
-/*******************************************************************************
  * Scope Management
  *
  * - Push/pop scopes.
  * - Add variables to the context and current scope.
  * - Find variables in the context.
  ******************************************************************************/
+
+/**
+ * Pushes a new scope for variables onto the context.
+ */
 void moxi_push_scope(moxi_context_t *ctx);
+
+/**
+ * Pops the top scope for variables from the context.
+ */
 void moxi_pop_scope(moxi_context_t *ctx);
+
+/**
+ * Returns the top scope for variables in the context.
+ */
 str_vector_t *moxi_get_scope(moxi_context_t *ctx);
+
+/**
+ * Adds `symbol` as a named term to the term table, variable table, and the current scope.
+ */
 void moxi_add_named_term(moxi_context_t *ctx, char *str, term_t term, var_kind_t kind);
+
+/**
+ * Finds a variable in the context. Returns `NULL` if the variable is not found.
+ */
 const var_table_entry_t *moxi_find_var(moxi_context_t *ctx, char *symbol);
 void moxi_add_named_sort(moxi_context_t *ctx, char *str, sort_t sort);
-void moxi_clear_type_vars(moxi_context_t *ctx);
+void moxi_clear_sort_vars(moxi_context_t *ctx);
 
 /*******************************************************************************
  * Sort Management
@@ -132,27 +137,87 @@ void moxi_clear_type_vars(moxi_context_t *ctx);
  * - Add sorts to the context.
  * - Find sorts in the context.
  ******************************************************************************/
-void moxi_declare_sort(moxi_context_t *ctx, char *str, uint32_t arity);
+
+/**
+ * Declares a new sort in the context.
+ */
+void moxi_declare_sort(moxi_context_t *ctx, char *str, size_t arity);
+
+/**
+ * Declares a new enum sort in the context.
+ */
 void moxi_declare_enum_sort(moxi_context_t *ctx, char *str, size_t nvalues, char **values);
-void moxi_define_sort(moxi_context_t *ctx, char *str, uint32_t nargs,
+
+/**
+ * Defines a new sort in the context.
+ */
+void moxi_define_sort(moxi_context_t *ctx, char *str, size_t nargs,
                       sort_t *args, sort_t body);
+
+/*******************************************************************************
+* Term Management
+*
+* - Add functions/constants to the context.
+* - Find terms in the context.
+******************************************************************************/
+
+/**
+ * Declares a new constant in the context.
+ */
+void moxi_declare_const(moxi_context_t *ctx, char *str, sort_t sort);
+
+/**
+* Declares a new function in the context.
+*/
+void moxi_declare_fun(moxi_context_t *ctx, char *symbol, size_t nargs,
+                    sort_t *args, sort_t ret);
+
+/**
+* Defines a new function in the context.
+*/
+void moxi_define_fun(moxi_context_t *ctx, char *symbol, size_t nargs,
+                    sort_t *args, sort_t ret, term_t body);
 
 /*******************************************************************************
  * System Management
  ******************************************************************************/
+
+/**
+ * Defines a new system in the context.
+ */
 void moxi_define_system(moxi_context_t *ctx, char *str, 
-                        size_t ninput, sort_t *input,
-                        size_t noutput, sort_t *output,
-                        size_t nlocal, sort_t *local, 
+                        size_t ninput, term_t *input, term_t *input_next,
+                        size_t noutput, term_t *output, term_t *output_next,
+                        size_t nlocal, term_t *local, term_t *local_next,
                         term_t init, term_t trans, term_t inv);
+
+/**
+ * Defines a new system with subsystems in the context.
+ */
 void moxi_define_system_subsys(moxi_context_t *ctx, char *str, 
-                               size_t ninput, sort_t *input, 
-                               size_t noutput, sort_t *output,
-                               size_t nlocal, sort_t *local,
+                               size_t ninput, term_t *input, term_t *input_next,
+                               size_t noutput, term_t *output, term_t *output_next,
+                               size_t nlocal, term_t *local, term_t *local_next,
                                term_t init, term_t trans, term_t inv, 
-                               size_t nsubsys, char **symbols, 
+                               size_t nsubsys, char **symbols, char **subsys_type,
                                size_t *nsubsys_input, term_t **subsys_input, 
                                size_t *nsubsys_output, term_t **subsys_output);
+
+/**
+ * Checks a system in the context.
+ */
+void moxi_check_system(moxi_context_t* ctx, char* str, size_t ninput,
+                       term_t* input, term_t* input_next, size_t noutput,
+                       term_t* output, term_t* output_next, size_t nlocal,
+                       term_t* local, term_t* local_next, size_t nassumption, char **assumption_name,   
+                       term_t* assumption, size_t nfairness, char **fairness_name, term_t* fairness,
+                       size_t nreachable, char **reachable_name, term_t* reachable, size_t ncurrent,
+                       char **current_name, term_t* current, size_t nquery, char** query_name,
+                       size_t* query_size, char*** query);
+
+/**
+ * Finds a system in the context. Returns `NULL` if the system is not found.
+ */
 const sys_table_entry_t *moxi_find_system(moxi_context_t *ctx, char *str);
 
 #endif

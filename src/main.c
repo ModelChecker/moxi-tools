@@ -19,7 +19,7 @@ int main(int argc, char *argv[])
     char *filename = argv[1];
     int status;
 
-    parser_t parser;
+    struct parser parser;
     status = init_parser(&parser, filename);
 
     if (status) {
@@ -30,7 +30,7 @@ int main(int argc, char *argv[])
     yices_init();
 
     while (status == 0) {
-        status = parse_moxi(&parser);
+        status = parse_command(&parser);
     }
     
     delete_parser(&parser);

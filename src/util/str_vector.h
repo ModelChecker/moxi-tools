@@ -5,9 +5,9 @@
 #include <stdint.h>
 
 typedef struct str_vector {
-    char **data;
     uint32_t capacity;
     uint32_t size;
+    char **data;
 } str_vector_t;
 
 #define STR_VECTOR_MAX_SIZE 65536

@@ -104,7 +104,7 @@ parse_action_t get_action(parse_state_t state, token_type_t token)
     }
 }
 
-int parse_moxi(parser_t *parser) 
+int parse_command(struct parser *parser) 
 {
     lexer_t *lex;
     char_buffer_t *str;

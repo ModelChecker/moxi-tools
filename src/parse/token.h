@@ -36,15 +36,11 @@ typedef enum token_type {
     TOK_RW_DECLARE_SORT,
     TOK_RW_DECLARE_ENUM_SORT,
     TOK_RW_DECLARE_CONST,
+    TOK_RW_DEFINE_CONST,
     TOK_RW_DECLARE_FUN,
     TOK_RW_DEFINE_SORT,
-    TOK_RW_DEFINE_CONST,
     TOK_RW_DEFINE_FUN,
-    TOK_RW_EXIT,
     TOK_RW_SET_LOGIC,
-    TOK_RW_ECHO,
-    TOK_RW_RESET,
-    TOK_RW_ASSERT,
 
     // keywords
     TOK_KW_INPUT,
@@ -161,10 +157,10 @@ typedef enum theory_symbol_type {
 #define NUM_THEORY_SYMBOLS (THY_SYM_UNKNOWN+1)
 
 typedef enum symbol_kind {
-    TERM,
-    SORT,
-    SYSTEM,
-    NONE,
+    SYM_KIND_TERM,
+    SYM_KIND_SORT,
+    SYM_KIND_SYSTEM,
+    SYM_KIND_NONE,
 } symbol_kind_t;
 
 typedef struct theory_symbol {

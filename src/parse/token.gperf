@@ -19,15 +19,11 @@ check-system,      TOK_RW_CHECK_SYS
 declare-sort,      TOK_RW_DECLARE_SORT
 declare-enum-sort, TOK_RW_DECLARE_ENUM_SORT
 declare-const,     TOK_RW_DECLARE_CONST
+define-const,      TOK_RW_DEFINE_CONST
 declare-fun,       TOK_RW_DECLARE_FUN
 define-sort,       TOK_RW_DEFINE_SORT
-define-const,      TOK_RW_DEFINE_CONST
 define-fun,        TOK_RW_DEFINE_FUN
-exit,              TOK_RW_EXIT
 set-logic,         TOK_RW_SET_LOGIC
-echo,              TOK_RW_ECHO
-assert,            TOK_RW_ASSERT
-reset,             TOK_RW_RESET
 :input,            TOK_KW_INPUT
 :output,           TOK_KW_OUTPUT
 :local,            TOK_KW_LOCAL

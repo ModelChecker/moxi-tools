@@ -9,8 +9,8 @@
 typedef struct ptr_stack {
     uint32_t capacity;
     uint32_t size;
-    void **data;
     void (*delete_elem)(void *);
+    void **data;
 } ptr_stack_t;
 
 #define PTR_STACK_MIN_SIZE 256

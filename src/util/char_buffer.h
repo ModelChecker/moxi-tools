@@ -14,11 +14,10 @@
  * - `len`: the index of the null terminator in `data` (`data[idx] = '\0'`)
  */
 typedef struct char_buffer {
-    char *data;
     size_t size;
     size_t len; // index denoting end of the buffer (`data[idx] = '\0'`)
+    char *data;
 } char_buffer_t;
-
 
 /**
  * Initialize a char buffer with a given size.

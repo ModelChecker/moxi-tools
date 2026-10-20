@@ -88,18 +88,13 @@ typedef enum frame_type {
     FRM_SORT,
     FRM_TERM,
     FRM_VAR_DECL,
-    FRM_TYPE_VAR_DECL,
+    FRM_SORT_VAR_DECL,
     FRM_TERM_BIND,
-    FRM_EXIT,
-    FRM_RESET,
-    FRM_ASSERT,
-    FRM_ECHO,
     FRM_SET_LOGIC,
     FRM_DECLARE_ENUM_SORT,
     FRM_DECLARE_SORT,
     FRM_DEFINE_SORT,
     FRM_DECLARE_CONST,
-    FRM_DEFINE_CONST,
     FRM_DECLARE_FUN,
     FRM_DEFINE_FUN,
     FRM_DEFINE_SYS,
@@ -119,7 +114,8 @@ typedef enum pstack_error_type {
     BAD_LOGIC = -6,
     BAD_TERM = -7,
     BAD_COMMAND = -8,
-    BAD_ATTR = -9
+    BAD_ATTR = -9,
+    BAD_SYMBOL = -10,
 } pstack_error_type_t;
 
 typedef struct pstack_elem {

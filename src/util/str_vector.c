@@ -24,6 +24,7 @@ void init_str_vector(str_vector_t *vec, uint32_t size)
 
 void delete_str_vector(str_vector_t *vec)
 {
+    str_vector_reset(vec);
     free(vec->data);
 }
 
@@ -31,7 +32,11 @@ void str_vector_reset(str_vector_t *vec)
 {
     vec->size = 0;
     uint32_t i;
-    for(i = 0; i < vec->capacity; ++i) {
+    for(i = 0; i < vec->size; ++i) {
+        free(vec->data[i]);
+        vec->data[i] = NULL;
+    }
+    for(i = vec->size; i < vec->capacity; ++i) {
         vec->data[i] = NULL;
     }
 }
@@ -45,7 +50,8 @@ void str_vector_extend(str_vector_t *vec, uint32_t size)
 
 void str_vector_append(str_vector_t *vec, char *str)
 {
-    vec->data[vec->size] = str;
+    vec->data[vec->size] = malloc(strlen(str) + 1);
+    strcpy(vec->data[vec->size], str);
     vec->size++;
     if (vec->size == vec->capacity) {
         str_vector_extend(vec, vec->capacity);

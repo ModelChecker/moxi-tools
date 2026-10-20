@@ -1,2 +1,0 @@
-(set-logic QF_LIA)
-(define-const x Bool (+ 4 5))

@@ -29,11 +29,7 @@ R0          *                   ERR_RP      consume     _
 
 // Commands
 //   <command> ::= 
-//              ( exit )
-//            | ( reset )
-//            | ( assert <term> )
-//            | ( echo <string> )
-//            | ( set-logic <symbol> )
+//              ( set-logic <symbol> )
 //            | ( define-fun <symbol> ( <sorted-var>* ) <sort> <term> )
 //            | ( declare-fun <symbol> ( <sort>* ) <sort> )
 //            | ( define-sort <symbol> ( <symbol>* ) <sort> )
@@ -51,10 +47,6 @@ CMD0        TOK_EOF             DONE               pass        _
 CMD0        *                   ERR_LP_EOF         pass        _
 
 // After "("
-CMD1        TOK_RW_EXIT                 R0          consume     _   { pstack_push_frame(pstack, FRM_EXIT, loc); }
-CMD1        TOK_RW_RESET                R0          consume     _   { pstack_push_frame(pstack, FRM_RESET, loc); }
-CMD1        TOK_RW_ASSERT               TRM0        consume     R0  { pstack_push_frame(pstack, FRM_ASSERT, loc); }
-CMD1        TOK_RW_ECHO                 CMD2        consume     _   { pstack_push_frame(pstack, FRM_ECHO, loc); }
 CMD1        TOK_RW_SET_LOGIC            CMD3        consume     _   { pstack_push_frame(pstack, FRM_SET_LOGIC, loc); }
 CMD1        TOK_RW_DEFINE_FUN           CMD4        consume     _   { pstack_push_frame(pstack, FRM_DEFINE_FUN, loc); }
 CMD1        TOK_RW_DECLARE_FUN          CMD5        consume     _   { pstack_push_frame(pstack, FRM_DECLARE_FUN, loc); }
@@ -62,17 +54,13 @@ CMD1        TOK_RW_DEFINE_SORT          CMD6        consume     _   { pstack_pus
 CMD1        TOK_RW_DECLARE_SORT         CMD7        consume     _   { pstack_push_frame(pstack, FRM_DECLARE_SORT, loc); }
 CMD1        TOK_RW_DECLARE_ENUM_SORT    CMD8        consume     _   { pstack_push_frame(pstack, FRM_DECLARE_ENUM_SORT, loc); }
 CMD1        TOK_RW_DECLARE_CONST        CMD9        consume     _   { pstack_push_frame(pstack, FRM_DECLARE_CONST, loc); }
-CMD1        TOK_RW_DEFINE_CONST         CMD10       consume     _   { pstack_push_frame(pstack, FRM_DEFINE_CONST, loc); }
+CMD1        TOK_RW_DEFINE_CONST         CMD10       consume     _   { pstack_push_frame(pstack, FRM_DEFINE_FUN, loc); }
 CMD1        TOK_RW_DEFINE_SYS           CMD11       consume     _   { pstack_push_frame(pstack, FRM_DEFINE_SYS, loc); }
 CMD1        TOK_RW_CHECK_SYS            CMD12       consume     _   { pstack_push_frame(pstack, FRM_CHECK_SYS, loc); }
 CMD1        *                           ERR_CMD     pass        _
 
-// echo
-CMD2        TOK_STRING      R0          consume     _
-CMD2        *               ERR_STR     pass        _
-
 // set-logic
-CMD3        TOK_SYMBOL      R0          consume     _               { pstack_push_string(pstack, str, loc); }
+CMD3        TOK_SYMBOL      R0          consume     _       { pstack_push_string(pstack, str, loc); }
 CMD3        *               ERR_SYM     pass        _
 
 // define-fun
@@ -90,7 +78,7 @@ CMD5        *               ERR_SYM     pass        _
 // define-sort
 CMD6        TOK_SYMBOL      CMD6a       consume     _       { pstack_push_string(pstack, str, loc); }
 CMD6a       TOK_LP          CMD6b       consume     _       
-CMD6b       TOK_SYMBOL      DONE        consume     CMD6b       { pstack_push_frame(pstack, FRM_TYPE_VAR_DECL, loc); pstack_push_string(pstack, str, loc); }
+CMD6b       TOK_SYMBOL      DONE        consume     CMD6b   { pstack_push_frame(pstack, FRM_SORT_VAR_DECL, loc); pstack_push_string(pstack, str, loc); }
 CMD6b       TOK_RP          SRT0        consume     R0
 
 // declare-sort
@@ -107,8 +95,10 @@ CMD8c       TOK_RP          R0          consume     _
 // declare-const
 CMD9        TOK_SYMBOL      SRT0       consume     R0           { pstack_push_string(pstack, str, loc); }
 
-// define-const
-CMD10       TOK_SYMBOL      SRT0       consume     R0,TRM0      { pstack_push_string(pstack, str, loc); }
+// define-const — SMT-LIB sugar for 0-ary define-fun
+CMD10       TOK_SYMBOL      SRT0       consume     CMD10a,TRM0  { pstack_push_string(pstack, str, loc); }
+CMD10       *               ERR_SYM    pass        _
+CMD10a      TOK_RP          DONE       consume     _
 
 //   <define-sys-attr> ::=
 //              :input  <sorted-var-list> <define-sys-attr>

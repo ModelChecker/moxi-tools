@@ -14,8 +14,8 @@ typedef struct str_int_map_entry str_int_map_entry_t;
  * next entry in the bucket.
  */
 struct str_int_map_entry {
-    char *str;
     int value;
+    char *str;
     str_int_map_entry_t *next;
 };
 
@@ -29,8 +29,8 @@ struct str_int_map_entry {
  * map[size] = <"C",value> -> <"D",value> -> ...
  */
 typedef struct str_int_map {
-    str_int_map_entry_t **data;
     uint32_t capacity;
+    str_int_map_entry_t **data;
 } str_int_map_t;
 
 #define DEFAULT_STR_INT_MAP_SIZE 1024

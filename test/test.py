@@ -3,7 +3,7 @@ import subprocess
 import sys
 
 FILE_DIR = pathlib.Path(__file__).parent
-EXECUTABLE = FILE_DIR.parent / "moxisc"
+EXECUTABLE = FILE_DIR.parent / "build" / "moxisc"
 
 if not EXECUTABLE.is_file():
     print(f"error: executable not a file ({EXECUTABLE})")
