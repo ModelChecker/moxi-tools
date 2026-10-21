@@ -14,7 +14,7 @@ typedef struct ptr_stack {
 } ptr_stack_t;
 
 #define PTR_STACK_MIN_SIZE 256
-#define PTR_STACK_MAX_SIZE 65536
+#define PTR_STACK_MAX_SIZE (UINT32_MAX / 2)
 
 void init_ptr_stack(ptr_stack_t *stack, void (*delete_elem)(void *));
 void delete_ptr_stack(ptr_stack_t *stack);

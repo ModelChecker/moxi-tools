@@ -10,7 +10,7 @@ typedef struct int32_vector {
     int32_t *data;
 } int32_vector_t;
 
-#define INT32_VECTOR_MAX_SIZE 65536
+#define INT32_VECTOR_MAX_SIZE (UINT32_MAX / 2)
 #define DEFAULT_INT32_VECTOR_SIZE 1024
 
 void init_int32_vector(int32_vector_t *vec, uint32_t size);

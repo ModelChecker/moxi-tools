@@ -22,16 +22,12 @@ void int32_map_reset(int32_map_t *map)
 
     for (i = 0; i < map->capacity; ++i) {
         cur = map->data[i];
-        if (cur == NULL) {
-            continue;
-        }
-
-        next = cur->next;
         while (cur != NULL) {
+            next = cur->next;
             free(cur);
             cur = next;
-            next = next->next;
         }
+        map->data[i] = NULL;
     }
 }
 
@@ -65,6 +61,7 @@ void int32_map_add(int32_map_t *map, int32_t key, int32_t value)
     entry = malloc(sizeof(int32_map_entry_t));
     entry->key = key;
     entry->value = value;
+    entry->next = NULL;
 
     uint32_t hash = jenkins_hash_uint32((int32_t) key) & (map->capacity - 1);
 

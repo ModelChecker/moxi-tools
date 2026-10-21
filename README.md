@@ -22,7 +22,7 @@ The generated program `moxisc` takes a single file as input
 
 To run the test suite, run
 
-    python3 test/test.py
+    ./test/test.sh
 
 ## Parser API
 

@@ -57,9 +57,7 @@ DEFAULT_ERROR_ACTION = get_action(
 
 PARSE_STACK_PUSH_FN = "int_stack_push(sstack, {state})"
 
-C_PREAMBLE = """
-#include <stdlib.h>
-#include <stdbool.h>
+C_PREAMBLE = """#include <stdbool.h>
 #include <assert.h>
 
 #include "io/print.h"

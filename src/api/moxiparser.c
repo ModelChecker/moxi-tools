@@ -9,6 +9,18 @@
 #include "util/int32_map.h"
 #include "moxi/logic.h"
 
+static char *dup_str(const char *s)
+{
+    size_t n;
+    char *d;
+    if (s == NULL) {
+        return NULL;
+    }
+    n = strlen(s) + 1;
+    d = malloc(n);
+    memcpy(d, s, n);
+    return d;
+}
 
 /**
  * A parser is a parser for the MoXI language.
@@ -100,6 +112,10 @@ static moxi_logic_t moxi_logic_map[] = {
     MOXI_QF_AUFNIRA, // QF_AUFNIRA
     MOXI_LOGIC_NONE, // LOGIC_NONE
     MOXI_LOGIC_ALL, // LOGIC_ALL
+    MOXI_FP, // FP
+    MOXI_STRING, // STRING
+    MOXI_DT, // DT
+    MOXI_SEQ, // SEQ
     MOXI_LOGIC_UNKNOWN, // LOGIC_UNKNOWN
 };
 
@@ -298,7 +314,7 @@ void reset_moxi_named_string_list_vector(moxi_named_string_list_vector_t *vector
 
 void append_moxi_named_string_list_vector(moxi_named_string_list_vector_t *vector, char *name, uint32_t nstrings, char **strings)
 {
-    vector->names[vector->size] = name;
+    vector->names[vector->size] = dup_str(name);
     vector->sizes[vector->size] = nstrings;
     vector->strings[vector->size] = malloc(nstrings * sizeof(char *));
     for (size_t j = 0; j < nstrings; j++) {
@@ -321,7 +337,11 @@ void init_moxi_term_map(moxi_term_map_t *map, uint32_t capacity)
 
 void delete_moxi_term_map(moxi_term_map_t *map)
 {
+    if (map == NULL) {
+        return;
+    }
     delete_int32_map((int32_map_t *) map);
+    free(map);
 }
 
 term_t moxi_term_map_find(moxi_term_map_t *map, term_t term)
@@ -336,6 +356,36 @@ void moxi_term_map_add(moxi_term_map_t *map, term_t term, term_t value)
 
 void reset_moxi_command(moxi_command_t *command)
 {
+    moxi_command_type_t type = command->type;
+
+    free((void *)command->str);
+    delete_moxi_string_vector(&command->strings);
+    delete_moxi_term_vector(&command->terms);
+    delete_moxi_sort_vector(&command->sorts);
+
+    switch (type) {
+    case MOXI_DEFINE_SYSTEM:
+        delete_moxi_subsystem_vector(&command->system.subsystems);
+        delete_moxi_term_vector(&command->system.input);
+        delete_moxi_term_vector(&command->system.output);
+        delete_moxi_term_vector(&command->system.local);
+        delete_moxi_term_map(command->system.next_vars);
+        break;
+    case MOXI_CHECK_SYSTEM:
+        delete_moxi_term_vector(&command->check_system.input);
+        delete_moxi_term_vector(&command->check_system.output);
+        delete_moxi_term_vector(&command->check_system.local);
+        delete_moxi_term_map(command->check_system.next_vars);
+        delete_moxi_named_term_vector(&command->check_system.assumption);
+        delete_moxi_named_term_vector(&command->check_system.fairness);
+        delete_moxi_named_term_vector(&command->check_system.reachable);
+        delete_moxi_named_term_vector(&command->check_system.current);
+        delete_moxi_named_string_list_vector(&command->check_system.query);
+        break;
+    default:
+        break;
+    }
+
     command->type = MOXI_NONE;
     command->logic = MOXI_LOGIC_NONE;
     command->str = NULL;
@@ -343,26 +393,8 @@ void reset_moxi_command(moxi_command_t *command)
     command->sort = NULL_TYPE;
     command->sort_macro = 0;
     command->arity = 0;
-    delete_moxi_string_vector(&command->strings);
-    delete_moxi_term_vector(&command->terms);
-    delete_moxi_sort_vector(&command->sorts);
-
-    if (command->type == MOXI_DEFINE_SYSTEM) {
-        delete_moxi_subsystem_vector(&command->system.subsystems);
-        delete_moxi_term_vector(&command->system.input);
-        delete_moxi_term_vector(&command->system.output);
-        delete_moxi_term_vector(&command->system.local);
-        free(command->system.next_vars);
-    }
-
-    if (command->type == MOXI_CHECK_SYSTEM) {
-        delete_moxi_subsystem_vector(&command->system.subsystems);
-        delete_moxi_term_vector(&command->system.input);
-        delete_moxi_term_vector(&command->system.output);
-        delete_moxi_term_vector(&command->system.local);
-    }
-
     command->system = (moxi_system_t){0};
+    command->check_system = (moxi_check_system_t){0};
     command->strings = (moxi_string_vector_t){0};
     command->terms = (moxi_term_vector_t){0};
     command->sorts = (moxi_sort_vector_t){0};
@@ -379,12 +411,8 @@ moxi_parser_t *new_moxi_parser(const char *filename)
     }
     parser->index = 0;
     
-    // Initialize the command -- set all structs to 0
-    parser->command = malloc(sizeof(moxi_command_t));
-    parser->command->system = (moxi_system_t){0};
-    parser->command->strings = (moxi_string_vector_t){0};
-    parser->command->terms = (moxi_term_vector_t){0};
-    parser->command->sorts = (moxi_sort_vector_t){0};
+    parser->command = calloc(1, sizeof(moxi_command_t));
+    parser->command->type = MOXI_NONE;
 
     return parser;
 }
@@ -420,12 +448,12 @@ moxi_command_t *moxi_parser_next_command(moxi_parser_t *parser)
     switch (internal_cmd->type) {
         case CMD_SET_LOGIC:
             cmd->type = MOXI_SET_LOGIC;
-            cmd->str = logic_str[moxi_logic_map[internal_cmd->data.set_logic.logic]];
+            cmd->str = dup_str(logic_str[moxi_logic_map[internal_cmd->data.set_logic.logic]]);
             cmd->logic = moxi_logic_map[internal_cmd->data.set_logic.logic];
             break;
         case CMD_DECLARE_ENUM_SORT:
             cmd->type = MOXI_DECLARE_ENUM_SORT;
-            cmd->str = internal_cmd->data.declare_enum_sort.str;
+            cmd->str = dup_str(internal_cmd->data.declare_enum_sort.str);
             init_moxi_string_vector(&cmd->strings);
             for (size_t i = 0; i < internal_cmd->data.declare_enum_sort.nvalues; i++) {
                 append_moxi_string_vector(&cmd->strings, internal_cmd->data.declare_enum_sort.values[i]);
@@ -433,12 +461,12 @@ moxi_command_t *moxi_parser_next_command(moxi_parser_t *parser)
             break;
         case CMD_DECLARE_SORT:
             cmd->type = MOXI_DECLARE_SORT;
-            cmd->str = internal_cmd->data.declare_sort.str;
+            cmd->str = dup_str(internal_cmd->data.declare_sort.str);
             cmd->arity = internal_cmd->data.declare_sort.arity;
             break;
         case CMD_DEFINE_SORT:
             cmd->type = MOXI_DEFINE_SORT;
-            cmd->str = internal_cmd->data.define_sort.str;
+            cmd->str = dup_str(internal_cmd->data.define_sort.str);
             cmd->arity = internal_cmd->data.define_sort.nargs;
             cmd->sort = internal_cmd->data.define_sort.body;
             cmd->sort_macro = internal_cmd->data.define_sort.body;
@@ -449,12 +477,12 @@ moxi_command_t *moxi_parser_next_command(moxi_parser_t *parser)
             break;
         case CMD_DECLARE_CONST:
             cmd->type = MOXI_DECLARE_CONST;
-            cmd->str = internal_cmd->data.declare_const.str;
+            cmd->str = dup_str(internal_cmd->data.declare_const.str);
             cmd->sort = internal_cmd->data.declare_const.sort;
             break;
         case CMD_DEFINE_FUN:
             cmd->type = MOXI_DEFINE_FUN;
-            cmd->str = internal_cmd->data.define_fun.str;
+            cmd->str = dup_str(internal_cmd->data.define_fun.str);
             cmd->term = internal_cmd->data.define_fun.term;
             cmd->sort = internal_cmd->data.define_fun.ret;
             init_moxi_term_vector(&cmd->terms, internal_cmd->data.define_fun.nargs);
@@ -464,7 +492,7 @@ moxi_command_t *moxi_parser_next_command(moxi_parser_t *parser)
             break;
         case CMD_DECLARE_FUN:
             cmd->type = MOXI_DECLARE_FUN;
-            cmd->str = internal_cmd->data.declare_fun.str;
+            cmd->str = dup_str(internal_cmd->data.declare_fun.str);
             cmd->sort = internal_cmd->data.declare_fun.ret;
             init_moxi_sort_vector(&cmd->sorts, internal_cmd->data.declare_fun.nargs);
             for (size_t i = 0; i < internal_cmd->data.declare_fun.nargs; i++) {
@@ -474,7 +502,7 @@ moxi_command_t *moxi_parser_next_command(moxi_parser_t *parser)
         case CMD_DEFINE_SYSTEM: 
         {
             cmd->type = MOXI_DEFINE_SYSTEM;
-            cmd->str = internal_cmd->data.define_system.str;
+            cmd->str = dup_str(internal_cmd->data.define_system.str);
 
             init_moxi_term_vector(&system->input, internal_cmd->data.define_system.ninput);
             for (size_t i = 0; i < internal_cmd->data.define_system.ninput; i++) {
@@ -523,8 +551,8 @@ moxi_command_t *moxi_parser_next_command(moxi_parser_t *parser)
 
             system->subsystems.size = internal_cmd->data.define_system.nsubsys;
             for (size_t i = 0; i < internal_cmd->data.define_system.nsubsys; i++) {
-                subsystems->data[i].name = internal_cmd->data.define_system.subsys[i];
-                subsystems->data[i].system = internal_cmd->data.define_system.subsys_type[i];
+                subsystems->data[i].name = dup_str(internal_cmd->data.define_system.subsys[i]);
+                subsystems->data[i].system = dup_str(internal_cmd->data.define_system.subsys_type[i]);
 
                 init_moxi_term_vector(&subsystems->data[i].input, internal_cmd->data.define_system.nsubsys_input[i]);
                 for (size_t j = 0; j < internal_cmd->data.define_system.nsubsys_input[i]; j++) {
@@ -541,7 +569,7 @@ moxi_command_t *moxi_parser_next_command(moxi_parser_t *parser)
         case CMD_CHECK_SYSTEM:
         {
             cmd->type = MOXI_CHECK_SYSTEM;
-            cmd->str = internal_cmd->data.check_system.str;
+            cmd->str = dup_str(internal_cmd->data.check_system.str);
 
             moxi_check_system_t *check_system = &cmd->check_system;
 

@@ -44,6 +44,7 @@ void str_map_reset(str_map_t *map)
             free(cur);
             cur = next;
         }
+        map->data[i] = NULL;
     }
 }
 
@@ -121,7 +122,8 @@ void *str_map_remove(str_map_t *map, char *symbol)
             free(cur);
             return value;
         }
-        return value;
+        prev = cur;
+        cur = cur->next;
     }
 
     return NULL;

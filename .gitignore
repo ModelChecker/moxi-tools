@@ -1,7 +1,7 @@
-obj/
-src/parse/hash_*
-moxisc
 tmp/
-*.code-workspace
 .cache/
 build/
+
+src/parse/hash_*
+src/moxi/hash_*
+src/parse/parse.c

@@ -3,6 +3,17 @@
 
 #include "moxi/command.h"
 
+static void *copy_bytes(const void *src, size_t n)
+{
+    void *dst;
+    if (n == 0) {
+        return NULL;
+    }
+    dst = malloc(n);
+    memcpy(dst, src, n);
+    return dst;
+}
+
 void reset_command(command_t *cmd) 
 {
     switch (cmd->type) {
@@ -16,6 +27,7 @@ void reset_command(command_t *cmd)
             free(cmd->data.declare_enum_sort.values);
             break;
         case CMD_DECLARE_FUN:
+            free(cmd->data.declare_fun.str);
             free(cmd->data.declare_fun.args);
             break;
         case CMD_DECLARE_SORT:
@@ -30,13 +42,16 @@ void reset_command(command_t *cmd)
             break;  
         case CMD_DEFINE_FUN:
             free(cmd->data.define_fun.str);
-            // free(cmd->data.define_fun.args);
+            free(cmd->data.define_fun.args);
             break;
         case CMD_DEFINE_SYSTEM:
             free(cmd->data.define_system.str);
             free(cmd->data.define_system.input);
+            free(cmd->data.define_system.input_next);
             free(cmd->data.define_system.output);
+            free(cmd->data.define_system.output_next);
             free(cmd->data.define_system.local);
+            free(cmd->data.define_system.local_next);
             for (size_t i = 0; i < cmd->data.define_system.nsubsys; i++) {
                 free(cmd->data.define_system.subsys[i]);
                 free(cmd->data.define_system.subsys_type[i]);
@@ -52,23 +67,48 @@ void reset_command(command_t *cmd)
                 free(cmd->data.define_system.subsys_output);
             }
             break;
-        case CMD_CHECK_SYSTEM:
-            free(cmd->data.check_system.str);
-            free(cmd->data.check_system.input);
-            free(cmd->data.check_system.output);
-            free(cmd->data.check_system.local);
-            free(cmd->data.check_system.assumption);
-            free(cmd->data.check_system.fairness);
-            free(cmd->data.check_system.reachable);
-            free(cmd->data.check_system.current);
-            free(cmd->data.check_system.query);
-            free(cmd->data.check_system.query_name);
-            free(cmd->data.check_system.query_size);
+        case CMD_CHECK_SYSTEM: {
+            check_system_cmd_t *cs = &cmd->data.check_system;
+            free(cs->str);
+            free(cs->input);
+            free(cs->input_next);
+            free(cs->output);
+            free(cs->output_next);
+            free(cs->local);
+            free(cs->local_next);
+            for (size_t i = 0; i < cs->nassumption; i++) {
+                free(cs->assumption_name[i]);
+            }
+            free(cs->assumption_name);
+            free(cs->assumption);
+            for (size_t i = 0; i < cs->nfairness; i++) {
+                free(cs->fairness_name[i]);
+            }
+            free(cs->fairness_name);
+            free(cs->fairness);
+            for (size_t i = 0; i < cs->nreachable; i++) {
+                free(cs->reachable_name[i]);
+            }
+            free(cs->reachable_name);
+            free(cs->reachable);
+            for (size_t i = 0; i < cs->ncurrent; i++) {
+                free(cs->current_name[i]);
+            }
+            free(cs->current_name);
+            free(cs->current);
+            for (size_t i = 0; i < cs->nquery; i++) {
+                free(cs->query[i]);
+            }
+            free(cs->query);
+            free(cs->query_name);
+            free(cs->query_size);
             break;
+        }
         case CMD_NONE:
         default:
             break;
     }
+    cmd->type = CMD_NONE;
 }
 
 void set_set_logic_cmd(command_t *cmd, logic_type_t logic) 
@@ -105,8 +145,7 @@ void set_declare_fun_cmd(command_t *cmd, char *str, size_t nargs,
     memcpy(cmd->data.declare_fun.str, str, strlen(str) * sizeof(char) + 1);
 
     cmd->data.declare_fun.nargs = nargs;
-    cmd->data.declare_fun.args = malloc(nargs * sizeof(sort_t));
-    memcpy(cmd->data.declare_fun.args, args, nargs * sizeof(sort_t));
+    cmd->data.declare_fun.args = copy_bytes(args, nargs * sizeof(sort_t));
     cmd->data.declare_fun.ret = ret;
 }
 
@@ -142,8 +181,7 @@ void set_define_fun_cmd(command_t *cmd, char *str, size_t nargs,
     memcpy(cmd->data.define_fun.str, str, strlen(str) * sizeof(char) + 1);
 
     cmd->data.define_fun.nargs = nargs;
-    cmd->data.define_fun.args = malloc(nargs * sizeof(term_t));
-    memcpy(cmd->data.define_fun.args, args, nargs * sizeof(term_t));
+    cmd->data.define_fun.args = copy_bytes(args, nargs * sizeof(term_t));
     cmd->data.define_fun.ret = ret;
     cmd->data.define_fun.term = term;
 }
@@ -158,8 +196,7 @@ void set_define_sort_cmd(command_t *cmd, char *str, size_t nargs,
     memcpy(cmd->data.define_sort.str, str, strlen(str) * sizeof(char) + 1);
 
     cmd->data.define_sort.nargs = nargs;
-    cmd->data.define_sort.args = malloc(nargs * sizeof(sort_t));
-    memcpy(cmd->data.define_sort.args, args, nargs * sizeof(sort_t));
+    cmd->data.define_sort.args = copy_bytes(args, nargs * sizeof(sort_t));
     cmd->data.define_sort.body = body;
 }
 
@@ -176,22 +213,16 @@ void set_define_system_cmd(command_t* cmd, char* str,
     memcpy(cmd->data.define_system.str, str, strlen(str) * sizeof(char) + 1);
 
     cmd->data.define_system.ninput = ninput;
-    cmd->data.define_system.input = malloc(ninput * sizeof(term_t));
-    cmd->data.define_system.input_next = malloc(ninput * sizeof(term_t));
-    memcpy(cmd->data.define_system.input, input, ninput * sizeof(term_t));
-    memcpy(cmd->data.define_system.input_next, input_next, ninput * sizeof(term_t));
+    cmd->data.define_system.input = copy_bytes(input, ninput * sizeof(term_t));
+    cmd->data.define_system.input_next = copy_bytes(input_next, ninput * sizeof(term_t));
 
     cmd->data.define_system.noutput = noutput;
-    cmd->data.define_system.output = malloc(noutput * sizeof(term_t));
-    cmd->data.define_system.output_next = malloc(noutput * sizeof(term_t));
-    memcpy(cmd->data.define_system.output, output, noutput * sizeof(term_t));
-    memcpy(cmd->data.define_system.output_next, output_next, noutput * sizeof(term_t));
+    cmd->data.define_system.output = copy_bytes(output, noutput * sizeof(term_t));
+    cmd->data.define_system.output_next = copy_bytes(output_next, noutput * sizeof(term_t));
 
     cmd->data.define_system.nlocal = nlocal;
-    cmd->data.define_system.local = malloc(nlocal * sizeof(term_t));
-    cmd->data.define_system.local_next = malloc(nlocal * sizeof(term_t));
-    memcpy(cmd->data.define_system.local, local, nlocal * sizeof(term_t));
-    memcpy(cmd->data.define_system.local_next, local_next, nlocal * sizeof(term_t));
+    cmd->data.define_system.local = copy_bytes(local, nlocal * sizeof(term_t));
+    cmd->data.define_system.local_next = copy_bytes(local_next, nlocal * sizeof(term_t));
     
     cmd->data.define_system.init = init;
     cmd->data.define_system.trans = trans;
@@ -275,27 +306,20 @@ void set_check_system_cmd(command_t* cmd, char* str, size_t ninput,
     memcpy(cmd->data.check_system.str, str, strlen(str) * sizeof(char) + 1);
 
     cmd->data.check_system.ninput = ninput;
-    cmd->data.check_system.input = malloc(ninput * sizeof(term_t));
-    cmd->data.check_system.input_next = malloc(ninput * sizeof(term_t));
-    memcpy(cmd->data.check_system.input, input, ninput * sizeof(term_t));
-    memcpy(cmd->data.check_system.input_next, input_next, ninput * sizeof(term_t));
+    cmd->data.check_system.input = copy_bytes(input, ninput * sizeof(term_t));
+    cmd->data.check_system.input_next = copy_bytes(input_next, ninput * sizeof(term_t));
 
     cmd->data.check_system.noutput = noutput;
-    cmd->data.check_system.output = malloc(noutput * sizeof(term_t));
-    cmd->data.check_system.output_next = malloc(noutput * sizeof(term_t));
-    memcpy(cmd->data.check_system.output, output, noutput * sizeof(term_t));
-    memcpy(cmd->data.check_system.output_next, output_next, noutput * sizeof(term_t));
+    cmd->data.check_system.output = copy_bytes(output, noutput * sizeof(term_t));
+    cmd->data.check_system.output_next = copy_bytes(output_next, noutput * sizeof(term_t));
 
     cmd->data.check_system.nlocal = nlocal;
-    cmd->data.check_system.local = malloc(nlocal * sizeof(term_t));
-    cmd->data.check_system.local_next = malloc(nlocal * sizeof(term_t));
-    memcpy(cmd->data.check_system.local, local, nlocal * sizeof(term_t));
-    memcpy(cmd->data.check_system.local_next, local_next, nlocal * sizeof(term_t));
+    cmd->data.check_system.local = copy_bytes(local, nlocal * sizeof(term_t));
+    cmd->data.check_system.local_next = copy_bytes(local_next, nlocal * sizeof(term_t));
 
     cmd->data.check_system.nassumption = nassumption;
     cmd->data.check_system.assumption_name = malloc(nassumption * sizeof(char*));
-    cmd->data.check_system.assumption = malloc(nassumption * sizeof(term_t));
-    memcpy(cmd->data.check_system.assumption, assumption, nassumption * sizeof(term_t));
+    cmd->data.check_system.assumption = copy_bytes(assumption, nassumption * sizeof(term_t));
     for (size_t i = 0; i < nassumption; i++) {
         cmd->data.check_system.assumption_name[i] = malloc(strlen(assumption_name[i]) * sizeof(char) + 1);
         strcpy(cmd->data.check_system.assumption_name[i], assumption_name[i]);
@@ -303,8 +327,7 @@ void set_check_system_cmd(command_t* cmd, char* str, size_t ninput,
 
     cmd->data.check_system.nfairness = nfairness;
     cmd->data.check_system.fairness_name = malloc(nfairness * sizeof(char*));
-    cmd->data.check_system.fairness = malloc(nfairness * sizeof(term_t));
-    memcpy(cmd->data.check_system.fairness, fairness, nfairness * sizeof(term_t));
+    cmd->data.check_system.fairness = copy_bytes(fairness, nfairness * sizeof(term_t));
     for (size_t i = 0; i < nfairness; i++) {
         cmd->data.check_system.fairness_name[i] = malloc(strlen(fairness_name[i]) * sizeof(char) + 1);
         strcpy(cmd->data.check_system.fairness_name[i], fairness_name[i]);
@@ -312,8 +335,7 @@ void set_check_system_cmd(command_t* cmd, char* str, size_t ninput,
 
     cmd->data.check_system.nreachable = nreachable;
     cmd->data.check_system.reachable_name = malloc(nreachable * sizeof(char*));
-    cmd->data.check_system.reachable = malloc(nreachable * sizeof(term_t));
-    memcpy(cmd->data.check_system.reachable, reachable, nreachable * sizeof(term_t));
+    cmd->data.check_system.reachable = copy_bytes(reachable, nreachable * sizeof(term_t));
     for (size_t i = 0; i < nreachable; i++) {
         cmd->data.check_system.reachable_name[i] = malloc(strlen(reachable_name[i]) * sizeof(char) + 1);
         strcpy(cmd->data.check_system.reachable_name[i], reachable_name[i]);
@@ -321,8 +343,7 @@ void set_check_system_cmd(command_t* cmd, char* str, size_t ninput,
 
     cmd->data.check_system.ncurrent = ncurrent;
     cmd->data.check_system.current_name = malloc(ncurrent * sizeof(char*));
-    cmd->data.check_system.current = malloc(ncurrent * sizeof(term_t));
-    memcpy(cmd->data.check_system.current, current, ncurrent * sizeof(term_t));
+    cmd->data.check_system.current = copy_bytes(current, ncurrent * sizeof(term_t));
     for (size_t i = 0; i < ncurrent; i++) {
         cmd->data.check_system.current_name[i] = malloc(strlen(current_name[i]) * sizeof(char) + 1);
         strcpy(cmd->data.check_system.current_name[i], current_name[i]);

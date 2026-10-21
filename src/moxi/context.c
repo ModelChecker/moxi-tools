@@ -6,6 +6,7 @@
 #include <stdio.h>
 
 #include "io/print.h"
+#include "moxi/command.h"
 #include "moxi/context.h"
 #include "moxi/hash_logic.h"
 #include "parse/hash_symbol.h"
@@ -109,12 +110,16 @@ void activate_int_real_symbols(moxi_context_t *ctx)
     ctx->active_theory_symbols[THY_SYM_TO_INT] = true;
 }
 
-static void default_delete_entry(void *entry) { }
+static void default_delete_entry(void *entry)
+{
+    free(entry);
+}
 
 static void delete_var_stack_entry(void *entry) 
 { 
     str_vector_t *vec = (str_vector_t *)entry;
     delete_str_vector(vec);
+    free(vec);
 }
 
 static void delete_sys_table_entry(void *entry) 
@@ -158,6 +163,8 @@ void init_context(moxi_context_t *ctx)
 
 void delete_context(moxi_context_t *ctx)
 {
+    reset_command(&ctx->cur_cmd);
+    delete_str_vector(&ctx->sort_var_symbols);
     delete_str_map(&ctx->var_table);
     delete_str_map(&ctx->sys_table);
     delete_ptr_stack(&ctx->scope_stack);
@@ -206,7 +213,7 @@ void moxi_pop_scope(moxi_context_t *ctx)
     str_vector_t *vec = ptr_stack_pop(&ctx->scope_stack);
     size_t i;
     for (i = 0; i < vec->size; ++i) {
-        str_map_remove(&ctx->var_table, vec->data[i]);
+        free(str_map_remove(&ctx->var_table, vec->data[i]));
         yices_remove_term_name(vec->data[i]);
     }
     delete_str_vector(vec);
@@ -259,6 +266,7 @@ void moxi_add_named_term(moxi_context_t *ctx, char *symbol, term_t term, var_kin
     if (primed_term == NULL_TERM) {
         yices_print_error(stderr);
         ctx->status = 1;
+        free(primed);
         return;
     }
     yices_set_term_name(primed_term, primed);
@@ -270,6 +278,7 @@ void moxi_add_named_term(moxi_context_t *ctx, char *symbol, term_t term, var_kin
     str_map_add(&ctx->var_table, primed, strlen(primed), primed_var_entry);
 
     str_vector_append(scope, primed);
+    free(primed);
 }
 
 void moxi_add_named_sort(moxi_context_t *ctx, char *str, sort_t sort)

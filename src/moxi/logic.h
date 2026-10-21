@@ -5,7 +5,6 @@
 #define __LOGIC_H__
 
 #include <stdbool.h>
-#include <stdlib.h>
 
 typedef enum logic_type {
     //  Base logics (with quantifiers)
@@ -120,6 +119,16 @@ typedef enum logic_type {
 
     LOGIC_NONE,
     LOGIC_ALL,
+
+    /*
+     * Theories Yices cannot construct terms for. These names are recognized
+     * so (set-logic ...) can report "unsupported" rather than "unknown".
+     */
+    FP,     // floating point
+    STRING, // strings
+    DT,     // algebraic datatypes
+    SEQ,    // sequences
+
     LOGIC_UNKNOWN,
 } logic_type_t;
 
@@ -136,7 +145,9 @@ extern logic_t no_logic;
 
 extern const char *logic_str[NUM_LOGICS];
 
+/* True for logics whose sorts and terms Yices can construct. */
 extern bool logic_is_supported[NUM_LOGICS];
+
 extern bool logic_has_arrays[NUM_LOGICS];
 extern bool logic_has_arithmetic[NUM_LOGICS];
 extern bool logic_has_bitvectors[NUM_LOGICS];

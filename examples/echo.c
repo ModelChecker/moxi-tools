@@ -64,7 +64,6 @@ int main(int argc, char **argv) {
                 yices_free_string(s0);
                 break;
             case MOXI_DEFINE_FUN:
-                s0 = yices_type_to_string(cmd->sort, 80, 20, 0);
                 printf("(define-fun %s (", cmd->str);
                 for (i = 0; i < cmd->terms.size; i++) {
                     s0 = yices_term_to_string(cmd->terms.data[i], 80, 20, 0);

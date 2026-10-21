@@ -30,15 +30,12 @@ void delete_str_vector(str_vector_t *vec)
 
 void str_vector_reset(str_vector_t *vec)
 {
-    vec->size = 0;
     uint32_t i;
     for(i = 0; i < vec->size; ++i) {
         free(vec->data[i]);
         vec->data[i] = NULL;
     }
-    for(i = vec->size; i < vec->capacity; ++i) {
-        vec->data[i] = NULL;
-    }
+    vec->size = 0;
 }
 
 void str_vector_extend(str_vector_t *vec, uint32_t size)

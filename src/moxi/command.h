@@ -235,6 +235,8 @@ typedef struct command {
     } data;
 } command_t;
 
+void reset_command(command_t *cmd);
+
 void set_exit_cmd(command_t* cmd);
 
 void set_reset_cmd(command_t* cmd);

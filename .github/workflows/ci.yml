@@ -11,8 +11,12 @@ permissions:
 
 jobs:
   test:
-    name: Build and test
+    name: Build and test (${{ matrix.mode }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [release, debug]
     env:
       YICES_VERSION: "2.7.0"
       YICES_PREFIX: ${{ github.workspace }}/.yices
@@ -55,14 +59,23 @@ jobs:
           echo "LDFLAGS=-L$YICES_PREFIX/lib -Wl,-rpath,$YICES_PREFIX/lib" >> "$GITHUB_ENV"
 
       - name: Build
-        run: make -j"$(nproc)"
+        run: |
+          if [ "${{ matrix.mode }}" = debug ]; then
+            make -j"$(nproc)" debug
+          else
+            make -j"$(nproc)"
+          fi
 
       - name: Run test suite
-        run: python3 test/test.py
+        run: ./test/test.sh
 
       - name: Build echo example
         run: |
-          clang -std=c99 -Wall \
+          extra=()
+          if [ "${{ matrix.mode }}" = debug ]; then
+            extra=(-fsanitize=address -fsanitize=undefined)
+          fi
+          clang -std=c99 -Wall "${extra[@]}" \
             -Ibuild -I"$YICES_PREFIX/include" examples/echo.c \
             -Lbuild -L"$YICES_PREFIX/lib" -lmoxiparser -lyices \
             -Wl,-rpath,"$PWD/build" -Wl,-rpath,"$YICES_PREFIX/lib" \
@@ -71,6 +84,9 @@ jobs:
       - name: Run echo on examples
         run: |
           set -euo pipefail
+          if [ "${{ matrix.mode }}" = debug ]; then
+            export ASAN_OPTIONS="${ASAN_OPTIONS:+${ASAN_OPTIONS}:}symbolize=0"
+          fi
           status=0
           shopt -s nullglob
           files=(examples/*.moxi)

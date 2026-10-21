@@ -10,7 +10,7 @@ typedef struct str_vector {
     char **data;
 } str_vector_t;
 
-#define STR_VECTOR_MAX_SIZE 65536
+#define STR_VECTOR_MAX_SIZE (UINT32_MAX / 2)
 #define DEFAULT_STR_VECTOR_SIZE 1024
 
 void init_str_vector(str_vector_t *vec, uint32_t size);

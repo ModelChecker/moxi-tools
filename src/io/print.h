@@ -1,7 +1,6 @@
 #ifndef __PRINT_H__
 #define __PRINT_H__
 
-#include <stdio.h>
 #include <inttypes.h>
 
 #define PRINT_ERROR_LOC(filename, loc, fmt, ...)                               \

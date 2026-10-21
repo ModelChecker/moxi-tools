@@ -69,7 +69,8 @@ typedef enum {
     TAG_BITVEC,  // bit-vector constant
     TAG_DECIMAL, // decimal constant
     TAG_TERM,
-    TAG_QUANTIFIER,
+    TAG_FORALL,
+    TAG_EXISTS,
     TAG_LET_BINDER,
     TAG_AS,
     TAG_ERROR,
@@ -152,7 +153,7 @@ typedef struct pstack {
 } pstack_t;
 
 #define PSTACK_MIN_SIZE 256
-#define PSTACK_MAX_SIZE 262144
+#define PSTACK_MAX_SIZE (UINT32_MAX / 2)
 
 void init_pstack(pstack_t *pstack, const char *filename);
 void delete_pstack(pstack_t *pstack);

@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
-#include <errno.h>
 #include <yices.h>
 
 #include "io/print.h"
@@ -29,7 +28,8 @@ const char *tag_str[NUM_TAGS] = {
     "<bitvec>",      // TAG_BITVEC
     "<dec>",         // TAG_DECIMAL
     "<term>",        // TAG_TERM
-    "<quantifier>",  // TAG_QUANTIFIER
+    "<forall>",      // TAG_FORALL
+    "<exists>",      // TAG_EXISTS
     "<let-binder>",  // TAG_LET_BINDER
     "<as>",          // TAG_AS
     "<error>",       // TAG_ERROR
@@ -87,7 +87,7 @@ void pstack_print_top_frame(pstack_t *pstack)
 
 void delete_pstack_elem(pstack_elem_t *elem)
 {
-    if (elem->tag == TAG_SYMBOL) {
+    if (elem->tag == TAG_SYMBOL || elem->tag == TAG_DECIMAL) {
         free(elem->value.str);
     }
 }
@@ -321,13 +321,14 @@ void pstack_push_hex(pstack_t *pstack, char_buffer_t *str, loc_t loc)
 void pstack_push_quantifier(pstack_t *pstack, token_type_t quant, loc_t loc)
 {
 #ifdef DEBUG_PSTACK
-    fprintf(stderr, "pstack: pushing quantifier\n");
+    fprintf(stderr, "pstack: pushing %s\n",
+            quant == TOK_RW_FORALL ? "forall" : "exists");
 #endif
     assert(quant == TOK_RW_FORALL || quant == TOK_RW_EXISTS);
 
     pstack_elem_t *elem;
     elem = &pstack->data[pstack->size];
-    elem->tag = TAG_QUANTIFIER;
+    elem->tag = (quant == TOK_RW_FORALL) ? TAG_FORALL : TAG_EXISTS;
     elem->value.tok = quant;
     elem->loc = loc;
 
@@ -527,6 +528,235 @@ void check_elem_sort(pstack_t *pstack, uint32_t n, sort_t sort)
 }
 
 /*******************************************************************************
+ * Logic fragment checks
+ ******************************************************************************/
+
+static logic_type_t pstack_logic(const pstack_t *pstack)
+{
+    return pstack->ctx.logic->type;
+}
+
+static void logic_error(pstack_t *pstack, const char *msg)
+{
+    loc_t loc = pstack_top_frame_loc(pstack);
+    PRINT_ERROR_LOC(pstack->filename, loc, "%s", msg);
+    longjmp(pstack->env, BAD_LOGIC);
+}
+
+static void require_logic(pstack_t *pstack, bool ok, const char *msg)
+{
+    if (!ok) {
+        logic_error(pstack, msg);
+    }
+}
+
+static bool is_arith_constant(term_t t)
+{
+    return yices_term_constructor(t) == YICES_ARITH_CONSTANT;
+}
+
+static uint32_t non_constant_count(uint32_t n, const term_t *args)
+{
+    uint32_t i, count = 0;
+    for (i = 0; i < n; ++i) {
+        if (!is_arith_constant(args[i])) {
+            count++;
+        }
+    }
+    return count;
+}
+
+/*
+ * Recursively check that `sort` is allowed by the current logic. Core sorts
+ * (Bool, enums) are always allowed. LOGIC_NONE imposes no extra sort
+ * restrictions beyond which theory symbols are active.
+ */
+static void check_sort_in_logic(pstack_t *pstack, sort_t sort)
+{
+    logic_type_t logic = pstack_logic(pstack);
+    int32_t i, n;
+
+    if (logic == LOGIC_NONE) {
+        return;
+    }
+    if (yices_type_is_bool(sort) || yices_type_is_scalar(sort)) {
+        return;
+    }
+    if (yices_type_is_int(sort)) {
+        require_logic(pstack, logic_has_ints[logic],
+                      "Int sort is not allowed in the current logic");
+        return;
+    }
+    if (yices_type_is_real(sort)) {
+        require_logic(pstack, logic_has_reals[logic],
+                      "Real sort is not allowed in the current logic");
+        return;
+    }
+    if (yices_type_is_bitvector(sort)) {
+        require_logic(pstack, logic_has_bitvectors[logic],
+                      "BitVec sort is not allowed in the current logic");
+        return;
+    }
+    if (yices_type_is_function(sort)) {
+        require_logic(pstack, logic_has_arrays[logic],
+                      "Array sort is not allowed in the current logic");
+        n = yices_type_num_children(sort);
+        for (i = 0; i < n; ++i) {
+            check_sort_in_logic(pstack, yices_type_child(sort, i));
+        }
+        return;
+    }
+    if (yices_type_is_uninterpreted(sort)) {
+        require_logic(pstack, logic_has_uf[logic],
+                      "uninterpreted sorts are not allowed in the current logic");
+    }
+}
+
+static void check_theory_symbol_in_logic(pstack_t *pstack, theory_symbol_type_t sym)
+{
+    logic_type_t logic = pstack_logic(pstack);
+    switch (sym) {
+    case THY_SYM_ARRAY:
+    case THY_SYM_SELECT:
+    case THY_SYM_STORE:
+        require_logic(pstack, logic_has_arrays[logic],
+                      "array sorts and terms require an array logic");
+        break;
+    case THY_SYM_INT:
+        require_logic(pstack, logic_has_ints[logic],
+                      "Int sort requires an integer logic");
+        break;
+    case THY_SYM_REAL:
+        require_logic(pstack, logic_has_reals[logic],
+                      "Real sort requires a real arithmetic logic");
+        break;
+    case THY_SYM_PLUS:
+    case THY_SYM_MINUS:
+    case THY_SYM_TIMES:
+    case THY_SYM_LE:
+    case THY_SYM_LT:
+    case THY_SYM_GE:
+    case THY_SYM_GT:
+        require_logic(pstack, logic_has_arithmetic[logic],
+                      "arithmetic terms require an arithmetic logic");
+        break;
+    case THY_SYM_IDIV:
+    case THY_SYM_MOD:
+    case THY_SYM_ABS:
+    case THY_SYM_DIVISIBLE:
+        require_logic(pstack, logic_has_ints[logic],
+                      "integer operators require an integer logic");
+        break;
+    case THY_SYM_RDIV:
+        require_logic(pstack, logic_has_reals[logic],
+                      "real division requires a real arithmetic logic");
+        break;
+    case THY_SYM_TO_INT:
+    case THY_SYM_TO_REAL:
+        require_logic(pstack, logic_has_ints[logic] && logic_has_reals[logic],
+                      "to_int/to_real require mixed integer-real arithmetic");
+        break;
+    case THY_SYM_BITVEC:
+    case THY_SYM_CONCAT:
+    case THY_SYM_EXTRACT:
+    case THY_SYM_REPEAT:
+    case THY_SYM_BVCOMP:
+    case THY_SYM_BVREDAND:
+    case THY_SYM_BVREDOR:
+    case THY_SYM_BVNOT:
+    case THY_SYM_BVAND:
+    case THY_SYM_BVOR:
+    case THY_SYM_BVNAND:
+    case THY_SYM_BVNOR:
+    case THY_SYM_BVXOR:
+    case THY_SYM_BVXNOR:
+    case THY_SYM_BVNEG:
+    case THY_SYM_BVADD:
+    case THY_SYM_BVSUB:
+    case THY_SYM_BVMUL:
+    case THY_SYM_BVUDIV:
+    case THY_SYM_BVUREM:
+    case THY_SYM_BVSDIV:
+    case THY_SYM_BVSREM:
+    case THY_SYM_BVSMOD:
+    case THY_SYM_BVSHL:
+    case THY_SYM_BVLSHR:
+    case THY_SYM_BVASHR:
+    case THY_SYM_ZERO_EXTEND:
+    case THY_SYM_SIGN_EXTEND:
+    case THY_SYM_ROTATE_LEFT:
+    case THY_SYM_ROTATE_RIGHT:
+    case THY_SYM_BVULT:
+    case THY_SYM_BVULE:
+    case THY_SYM_BVUGT:
+    case THY_SYM_BVUGE:
+    case THY_SYM_BVSLT:
+    case THY_SYM_BVSLE:
+    case THY_SYM_BVSGT:
+    case THY_SYM_BVSGE:
+        require_logic(pstack, logic_has_bitvectors[logic],
+                      "bitvector sorts and terms require a bitvector logic");
+        break;
+    default:
+        break;
+    }
+}
+
+static void check_linear_mul(pstack_t *pstack, uint32_t n, const term_t *args)
+{
+    logic_type_t logic = pstack_logic(pstack);
+    uint32_t nvar = non_constant_count(n, args);
+    if (logic_is_difference_logic[logic] && nvar > 0) {
+        logic_error(pstack, "multiplication of non-constant terms is not allowed in difference logic");
+    }
+    if (logic_is_linear_arith[logic] && nvar > 1) {
+        logic_error(pstack, "nonlinear multiplication is not allowed in linear arithmetic");
+    }
+}
+
+static void check_difference_add(pstack_t *pstack, uint32_t n, const term_t *args)
+{
+    logic_type_t logic = pstack_logic(pstack);
+    if (logic_is_difference_logic[logic] && non_constant_count(n, args) > 1) {
+        logic_error(pstack, "addition of multiple non-constant terms is not allowed in difference logic");
+    }
+}
+
+static void check_difference_minus(pstack_t *pstack, uint32_t n, const term_t *args)
+{
+    logic_type_t logic = pstack_logic(pstack);
+    if (logic_is_difference_logic[logic] && non_constant_count(n, args) > 2) {
+        logic_error(pstack, "difference logic allows at most two non-constant terms in subtraction");
+    }
+}
+
+static void check_nonlinear_int_op(pstack_t *pstack, const char *op)
+{
+    logic_type_t logic = pstack_logic(pstack);
+    if (logic_is_linear_arith[logic] || logic_is_difference_logic[logic]) {
+        PRINT_ERROR_LOC(pstack->filename, pstack_top_frame_loc(pstack),
+                        "%s is not allowed in linear or difference logic", op);
+        longjmp(pstack->env, BAD_LOGIC);
+    }
+}
+
+static void check_linear_real_div(pstack_t *pstack, uint32_t n, const term_t *args)
+{
+    logic_type_t logic = pstack_logic(pstack);
+    uint32_t i;
+    if (logic_is_difference_logic[logic]) {
+        logic_error(pstack, "division is not allowed in difference logic");
+    }
+    if (logic_is_linear_arith[logic]) {
+        for (i = 1; i < n; ++i) {
+            if (!is_arith_constant(args[i])) {
+                logic_error(pstack, "division by a non-constant is not allowed in linear arithmetic");
+            }
+        }
+    }
+}
+
+/*******************************************************************************
  * Frame evaluation
  ******************************************************************************/
 void (*frame_eval_table[NUM_FRM_TYPES])(pstack_t *);
@@ -637,8 +867,14 @@ void eval_sort(pstack_t *pstack)
     // Check if theory sort
     if (is_active_theory_sort(ctx, symbol)) {
         theory_symbol_type_t sym_type = get_theory_symbol_type(ctx, symbol);
+        check_theory_symbol_in_logic(pstack, sym_type);
         term_eval_table[sym_type](pstack);
         return;
+    }
+
+    theory_symbol_type_t inactive = get_theory_symbol_type(ctx, symbol);
+    if (inactive != THY_SYM_UNKNOWN) {
+        check_theory_symbol_in_logic(pstack, inactive);
     }
 
     // Check if simple sort alias
@@ -1025,6 +1261,7 @@ void eval_add_term(pstack_t *pstack)
         check_elem_tag(pstack, i + 2, TAG_TERM);
         args[i] = get_elem_term(pstack, i + 2);
     }
+    check_difference_add(pstack, nargs, args);
     term_t term = yices_sum(nargs, args);
     if (term == NULL_TERM) {
         PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct sum");
@@ -1052,6 +1289,7 @@ void eval_mul_term(pstack_t *pstack)
         check_elem_tag(pstack, i + 2, TAG_TERM);
         args[i] = get_elem_term(pstack, i + 2);
     }
+    check_linear_mul(pstack, nargs, args);
     term_t term = yices_product(nargs, args);
     if (term == NULL_TERM) {
         PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct product");
@@ -1076,15 +1314,21 @@ void eval_minus_term(pstack_t *pstack)
     fprintf(stderr, "pstack: evaluating minus term\n");
 #endif
     loc_t loc = pstack_top_frame_loc(pstack);
+    uint32_t nargs = pstack_top_frame_size(pstack) - 2;
+    term_t args[nargs];
+    uint32_t i;
+    for (i = 0; i < nargs; ++i) {
+        check_elem_tag(pstack, i + 2, TAG_TERM);
+        args[i] = get_elem_term(pstack, i + 2);
+    }
+    check_difference_minus(pstack, nargs, args);
     if (pstack_top_frame_size(pstack) > 3) {
         check_frame_size_geq(pstack, 4);
         uint32_t last = pstack_top_frame_size(pstack) - 1;
-        check_elem_tag(pstack, last, TAG_TERM);
         term_t term, arg;
         term = get_elem_term(pstack, last);
-        for (uint32_t i = last - 1; i > 1; --i) {
-            check_elem_tag(pstack, i, TAG_TERM);
-            arg = get_elem_term(pstack, i);
+        for (uint32_t j = last - 1; j > 1; --j) {
+            arg = get_elem_term(pstack, j);
             term = yices_sub(arg, term);
         }
         if (term == NULL_TERM) {
@@ -1097,7 +1341,6 @@ void eval_minus_term(pstack_t *pstack)
         return;
     }
     check_frame_size_eq(pstack, 3);
-    check_elem_tag(pstack, 2, TAG_TERM);
     term_t arg = get_elem_term(pstack, 2);
     term_t term = yices_neg(arg);
     if (term == NULL_TERM) {
@@ -1119,6 +1362,7 @@ void eval_idiv_term(pstack_t *pstack)
 #endif
     loc_t loc = pstack_top_frame_loc(pstack);
     check_frame_size_geq(pstack, 4);
+    check_nonlinear_int_op(pstack, "div");
     uint32_t last = pstack_top_frame_size(pstack) - 1;
     check_elem_tag(pstack, last, TAG_TERM);
     term_t term, arg;
@@ -1147,13 +1391,19 @@ void eval_rdiv_term(pstack_t *pstack)
 #endif
     loc_t loc = pstack_top_frame_loc(pstack);
     check_frame_size_geq(pstack, 4);
+    uint32_t nargs = pstack_top_frame_size(pstack) - 2;
+    term_t args[nargs];
+    uint32_t i;
+    for (i = 0; i < nargs; ++i) {
+        check_elem_tag(pstack, i + 2, TAG_TERM);
+        args[i] = get_elem_term(pstack, i + 2);
+    }
+    check_linear_real_div(pstack, nargs, args);
     uint32_t last = pstack_top_frame_size(pstack) - 1;
-    check_elem_tag(pstack, last, TAG_TERM);
     term_t term, arg;
     term = get_elem_term(pstack, last);
-    for (uint32_t i = last - 1; i > 1; --i) {
-        check_elem_tag(pstack, i, TAG_TERM);
-        arg = get_elem_term(pstack, i);
+    for (uint32_t j = last - 1; j > 1; --j) {
+        arg = get_elem_term(pstack, j);
         term = yices_division(arg, term);
     }
     if (term == NULL_TERM) {
@@ -1175,6 +1425,7 @@ void eval_mod_term(pstack_t *pstack)
 #endif
     loc_t loc = pstack_top_frame_loc(pstack);
     check_frame_size_eq(pstack, 4);
+    check_nonlinear_int_op(pstack, "mod");
     check_elem_tag(pstack, 2, TAG_TERM);
     check_elem_tag(pstack, 3, TAG_TERM);
     term_t lhs, rhs;
@@ -1200,6 +1451,7 @@ void eval_abs_term(pstack_t *pstack)
 #endif
     loc_t loc = pstack_top_frame_loc(pstack);
     check_frame_size_eq(pstack, 3);
+    check_nonlinear_int_op(pstack, "abs");
     check_elem_tag(pstack, 2, TAG_TERM);
     term_t arg;
     arg = get_elem_term(pstack, 2);
@@ -2288,9 +2540,8 @@ void eval_as_term(pstack_t *pstack)
 #ifdef DEBUG_PSTACK
     fprintf(stderr, "pstack: evaluating as term\n");
 #endif
-    moxi_context_t *ctx = &pstack->ctx;
     loc_t loc = pstack_top_frame_loc(pstack);
-    logic_type_t logic = ctx->logic->type;
+    logic_type_t logic = pstack_logic(pstack);
 
     check_frame_size_geq(pstack, 4);
     check_elem_tag(pstack, 2, TAG_SYMBOL);
@@ -2304,11 +2555,8 @@ void eval_as_term(pstack_t *pstack)
                         symbol);
         longjmp(pstack->env, BAD_TERM);
     }
-    if (!logic_has_arrays[logic]) {
-        PRINT_ERROR_LOC(pstack->filename, loc,
-                        "array constants require an array logic");
-        longjmp(pstack->env, BAD_LOGIC);
-    }
+    require_logic(pstack, logic_has_arrays[logic],
+                  "array constants require an array logic");
     if (!yices_type_is_function(sort) || yices_type_num_children(sort) != 2) {
         PRINT_ERROR_LOC(pstack->filename, loc,
                         "const requires a unary Array sort");
@@ -2368,10 +2616,8 @@ void eval_term(pstack_t *pstack)
     {
     case TAG_BITVEC:
     {
-        if (!logic_has_bitvectors[logic]) {
-            PRINT_ERROR_LOC(pstack->filename, loc, "bitvector literals require bitvector logic");
-            longjmp(pstack->env, BAD_LOGIC);
-        }
+        require_logic(pstack, logic_has_bitvectors[logic],
+                      "bitvector literals require a bitvector logic");
         check_frame_size_eq(pstack, 2);
         bv64_t bitvec = get_elem_bv64(pstack, 1);
         pstack_pop_frame(pstack);
@@ -2380,10 +2626,8 @@ void eval_term(pstack_t *pstack)
     }
     case TAG_NUMERAL:
     {
-        if (!logic_has_ints[logic] && !logic_has_reals[logic]) {
-            PRINT_ERROR_LOC(pstack->filename, loc, "integer literals require valid logic");
-            longjmp(pstack->env, BAD_LOGIC);
-        }
+        require_logic(pstack, logic_has_ints[logic] || logic_has_reals[logic],
+                      "integer literals require an arithmetic logic");
         check_frame_size_eq(pstack, 2);
         uint64_t value = get_elem_numeral(pstack, 1);
         pstack_pop_frame(pstack);
@@ -2395,30 +2639,27 @@ void eval_term(pstack_t *pstack)
         // Since decimals in yices are expected to be rationals, we just use
         // their provided parse function to convert decimal strings to yices
         // rationals.
-        if (!logic_has_reals[logic]) {
-            PRINT_ERROR("decimal literals require valid logic");
-            longjmp(pstack->env, BAD_LOGIC);
-        }
+        require_logic(pstack, logic_has_reals[logic],
+                      "decimal literals require a real arithmetic logic");
         check_frame_size_eq(pstack, 2);
         check_elem_tag(pstack, 1, TAG_DECIMAL);
         char *decimal = get_elem_symbol(pstack, 1);
-        pstack_pop_frame(pstack);
         term_t term = yices_parse_float(decimal);
         if (term == NULL_TERM) {
             PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct decimal");
             yices_print_error(stderr);
             longjmp(pstack->env, BAD_TERM);
         }
+        pstack_pop_frame(pstack);
         pstack_push_term(pstack, term, loc);
         break;
     }
-    case TAG_QUANTIFIER:
+    case TAG_FORALL:
+    case TAG_EXISTS:
     {
-        // [ <term-frame> "forall" (<symbol> <sort>)+ <term> ]
-        if (!logic_has_quantifiers[logic]) {
-            PRINT_ERROR_LOC(pstack->filename, loc, "quantifiers require quantifier-valid logic");
-            longjmp(pstack->env, BAD_LOGIC);
-        }
+        // [ <term-frame> "forall"|"exists" (<symbol> <sort>)+ <term> ]
+        require_logic(pstack, logic_has_quantifiers[logic],
+                      "quantifiers require a quantified logic");
 
         uint32_t i;
         str_vector_t *scope = moxi_get_scope(ctx);
@@ -2430,15 +2671,18 @@ void eval_term(pstack_t *pstack)
         }
 
         term_t body = get_elem_term(pstack, pstack_top_frame_size(pstack) - 1);
-        term_t term = yices_forall(scope->size, vars, body); // FIXME: This could be "exists"
+        term_t term = (tag == TAG_FORALL)
+                          ? yices_forall(scope->size, vars, body)
+                          : yices_exists(scope->size, vars, body);
         if (term == NULL_TERM) {
-            PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct forall");
+            PRINT_ERROR_LOC(pstack->filename, loc, "failed to construct %s",
+                            tag == TAG_FORALL ? "forall" : "exists");
             yices_print_error(stderr);
             longjmp(pstack->env, BAD_TERM);
         }
         moxi_pop_scope(ctx);
         pstack_pop_frame(pstack);
-        pstack_push_term(pstack, term, loc);        
+        pstack_push_term(pstack, term, loc);
         break;
     }
     case TAG_LET_BINDER:
@@ -2457,8 +2701,15 @@ void eval_term(pstack_t *pstack)
         char *symbol = get_elem_symbol(pstack, 1);
         if (is_active_theory_term(ctx, symbol)) {
             theory_symbol_type_t sym_type = get_theory_symbol_type(ctx, symbol);
+            check_theory_symbol_in_logic(pstack, sym_type);
             term_eval_table[sym_type](pstack);
             break;
+        }
+        {
+            theory_symbol_type_t inactive = get_theory_symbol_type(ctx, symbol);
+            if (inactive != THY_SYM_UNKNOWN) {
+                check_theory_symbol_in_logic(pstack, inactive);
+            }
         }
         term_t term = yices_get_term_by_name(symbol);
         if (term == NULL_TERM) {
@@ -2518,6 +2769,7 @@ void eval_var_decl(pstack_t *pstack)
 
     char *symbol = get_elem_symbol(pstack, 1);
     sort_t sort = get_elem_sort(pstack, 2);
+    check_sort_in_logic(pstack, sort);
     // Logic binders (define-fun, let, quantifiers) must be Yices variables so
     // that yices_lambda / quantifiers accept them. System input/output/local
     // variables remain uninterpreted constants.
@@ -2638,6 +2890,11 @@ void eval_declare_sort(pstack_t *pstack)
     char *symbol = get_elem_symbol(pstack, 1);
     uint64_t arity = get_elem_numeral(pstack, 2);
 
+    if (pstack_logic(pstack) != LOGIC_NONE) {
+        require_logic(pstack, logic_has_uf[pstack_logic(pstack)],
+                      "uninterpreted sorts are not allowed in the current logic");
+    }
+
     moxi_declare_sort(ctx, symbol, arity);
     if (ctx->status) {
         PRINT_ERROR("symbol %s already defined", symbol);
@@ -2672,6 +2929,7 @@ void eval_declare_enum_sort(pstack_t *pstack)
     }
 
     moxi_declare_enum_sort(ctx, sort_symbol, nvalues, enum_symbols);
+    free(enum_symbols);
     if (ctx->status) {
         PRINT_ERROR_LOC(pstack->filename, loc, "symbol already defined");
         longjmp(pstack->env, BAD_SYMBOL_KIND);
@@ -2730,6 +2988,7 @@ void eval_declare_const(pstack_t *pstack)
     moxi_context_t *ctx = &pstack->ctx;
     char *symbol = get_elem_symbol(pstack, 1);
     sort_t sort = get_elem_sort(pstack, 2);
+    check_sort_in_logic(pstack, sort);
 
     moxi_declare_fun(ctx, symbol, 0, NULL, sort);
     if (ctx->status) {
@@ -2756,10 +3015,8 @@ void eval_declare_fun(pstack_t *pstack)
     moxi_context_t *ctx = &pstack->ctx;
     loc_t loc = pstack_top_frame_loc(pstack);
 
-    if (!logic_has_uf[ctx->logic->type]) {
-        PRINT_ERROR_LOC(pstack->filename, loc, "uninterpreted functions not supported in current logic");
-        longjmp(pstack->env, BAD_LOGIC);
-    }
+    require_logic(pstack, logic_has_uf[ctx->logic->type],
+                  "uninterpreted functions are not allowed in the current logic");
 
     check_frame_size_geq(pstack, 3);
     uint32_t nargs, i;
@@ -2780,11 +3037,13 @@ void eval_declare_fun(pstack_t *pstack)
     for (i = 2; i < nargs + 2; ++i) {
         check_elem_tag(pstack, i, TAG_SORT);
         args[i-2] = get_elem_sort(pstack, i);
+        check_sort_in_logic(pstack, args[i-2]);
     }
     check_elem_tag(pstack, nargs + 2, TAG_SORT);
 
     symbol = get_elem_symbol(pstack, 1);
     ret = get_elem_sort(pstack, nargs + 2);
+    check_sort_in_logic(pstack, ret);
 
     moxi_declare_fun(ctx, symbol, nargs, args, ret);
     if (ctx->status) {
@@ -2852,6 +3111,7 @@ void eval_define_fun(pstack_t* pstack) {
     symbol = get_elem_symbol(pstack, 1);
     ret = get_elem_sort(pstack, 2 + (nargs * 2));
     body = get_elem_term(pstack, 3 + (nargs * 2));
+    check_sort_in_logic(pstack, ret);
 
     if (!yices_compatible_types(ret, yices_type_of_term(body))) {
         PRINT_ERROR_LOC(pstack->filename, loc, "return sort mismatch");
@@ -3114,6 +3374,10 @@ void eval_define_system(pstack_t *pstack)
                            trans, inv);
     }
 
+    for (i = 0; i < nsubsys; i++) {
+        free(subsys_input[i]);
+        free(subsys_output[i]);
+    }
     free(subsys_symbol);
     free(subsys_type_symbol);
     free(subsys_input);

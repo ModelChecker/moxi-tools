@@ -1,0 +1,4 @@
+(set-logic ALL)
+(declare-fun p (Int) Bool)
+(define-fun f ((x Int) (y Real) (b (_ BitVec 4)) (a (Array Int Bool))) Bool
+  (and (p x) (select a x) (= y 1.0) (= b #b0000)))

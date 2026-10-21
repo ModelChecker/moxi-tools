@@ -17,6 +17,7 @@ DBGFLAGS := -g -O0 -DDEBUG -Waggregate-return -Wbad-function-cast \
 DBGLDFLAGS := -fsanitize=address -fsanitize=undefined
 
 CFLAGS := -Wall -I$(SRC_DIR) -std=c99 -Wno-deprecated-non-prototype -fPIC
+RELFLAGS := -O2 -DNDEBUG
 
 LIB := -lyices
 
@@ -61,6 +62,30 @@ OBJ_FILES := $(addprefix $(OBJ_DIR)/, $(addsuffix .o, $(basename $(subst $(SRC_D
 LIBRARY_OBJ_FILES := $(addprefix $(OBJ_DIR)/, $(addsuffix .o, $(basename $(subst $(SRC_DIR)/,,$(LIBRARY_SRC_FILES)))))
 DEP_FILES := $(addprefix $(OBJ_DIR)/, $(addsuffix .d, $(basename $(subst $(SRC_DIR)/,,$(SRC_FILES)))))
 
+# Default/release builds strip assert(). `make debug` keeps them and
+# instruments both moxisc and libmoxiparser. Sanitizer flags must be in
+# CFLAGS so library objects are compiled instrumented; putting them only
+# in LDFLAGS leaves the .so as an unsanitized DSO.
+ifneq ($(filter debug,$(MAKECMDGOALS)),)
+BUILD_MODE := debug
+CFLAGS += $(DBGFLAGS) $(DBGLDFLAGS)
+LDFLAGS += $(DBGLDFLAGS)
+else
+BUILD_MODE := release
+CFLAGS += $(RELFLAGS)
+endif
+
+# Release and debug share build/obj. Drop those objects when the mode
+# changes (or when no stamp exists) so `make debug` cannot reuse leftover
+# -O2/-DNDEBUG files.
+PREV_BUILD_MODE := $(shell cat $(OBJ_DIR)/.build-mode 2>/dev/null)
+ifneq ($(PREV_BUILD_MODE),$(BUILD_MODE))
+ifneq ($(wildcard $(OBJ_DIR)),)
+$(info Switching from $(or $(PREV_BUILD_MODE),unknown) to $(BUILD_MODE); rebuilding objects.)
+$(shell rm -rf $(OBJ_DIR))
+endif
+endif
+
 # Define default rule first
 default: $(BUILD_DIR)/$(BIN) $(BUILD_DIR)/$(LIBRARY) $(BUILD_DIR)/moxiparser.h
 
@@ -78,6 +103,8 @@ $(SRC_DIR)/moxi/hash_logic.h: $(SRC_DIR)/moxi/logic.gperf
 	$(GPERF) -C -E -t --output-file=$(SRC_DIR)/moxi/hash_logic.h \
 	 --lookup-function-name=find_moxi_logic \
 		--hash-function=hash_logic $(SRC_DIR)/moxi/logic.gperf
+
+$(OBJ_DIR)/moxi/context.o: $(SRC_DIR)/moxi/hash_logic.h
 
 $(SRC_DIR)/parse/parse.c: $(TOOLS_DIR)/moxi.tbl $(TOOLS_DIR)/parse_table.py
 	$(PYTHON) $(TOOLS_DIR)/parse_table.py $(TOOLS_DIR)/moxi.tbl > $(SRC_DIR)/parse/parse.c
@@ -103,20 +130,21 @@ $(BUILD_DIR)/$(BIN): $(gperf_generated) $(OBJ_FILES) $(DEP_FILES) | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -o $@ $(OBJ_FILES) $(LIB) $(LDFLAGS)
 
 $(BUILD_DIR)/$(LIBRARY): $(gperf_generated) $(LIBRARY_OBJ_FILES) $(DEP_FILES) | $(BUILD_DIR)
-	$(CC) $(LIB_LDFLAGS) -o $@ $(LIBRARY_OBJ_FILES) $(LIB) $(LDFLAGS)
+	$(CC) $(CFLAGS) $(LIB_LDFLAGS) -o $@ $(LIBRARY_OBJ_FILES) $(LIB) $(LDFLAGS)
 
 $(BUILD_DIR)/moxiparser.h: $(SRC_DIR)/moxiparser.h | $(BUILD_DIR)
 	cp $< $@
 
 $(OBJ_DIR):
 	mkdir -p $(OBJ_DIRS)
+	echo $(BUILD_MODE) > $(OBJ_DIR)/.build-mode
+
+.PHONY: bin lib debug clean install
 
 bin: $(BUILD_DIR)/$(BIN)
 
 lib: $(BUILD_DIR)/$(LIBRARY)
 
-debug: CFLAGS += $(DBGFLAGS)
-debug: LDFLAGS += $(DBGLDFLAGS)
 debug: $(BUILD_DIR)/$(BIN) $(BUILD_DIR)/$(LIBRARY) $(BUILD_DIR)/moxiparser.h
 
 clean:

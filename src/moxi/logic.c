@@ -93,91 +93,153 @@ const char *logic_str[NUM_LOGICS] = {
     "QF_AUFNRA",
     "QF_AUFNIRA",
     "LOGIC_NONE",
-    "LOGIC_ALL",
+    "ALL",
+    "FP",
+    "STRING",
+    "DT",
+    "SEQ",
     "LOGIC_UNKNOWN"
 };
 
+/*
+ * True iff this tool can construct Yices sorts and terms for the logic.
+ * That is every combination of Core, Int, Real, BitVec, Array, and UF
+ * (with or without quantifiers). Floating point, strings, datatypes, and
+ * sequences have no Yices term constructors here, so they are unsupported.
+ */
 bool logic_is_supported[NUM_LOGICS] = {
     true,  // AX
     true,  // BV
-    false, // IDL
+    true,  // IDL
     true,  // LIA
     true,  // LRA
     true,  // LIRA
     true,  // NIA
     true,  // NRA
     true,  // NIRA
-    false, // RDL
+    true,  // RDL
     true,  // UF
     true,  // ABV
-    false, // ALIA
-    false, // ALRA
-    false, // ALIRA
-    false, // ANIA
-    false, // ANRA
-    false, // ANIRA
-    true, // AUF
-    true, // UFBV
-    true, // UFBVLIA
-    false, // UFIDL
-    true, // UFLIA
-    true, // UFLRA
-    true, // UFLIRA
-    true, // UFNIA
-    true, // UFNRA
-    true, // UFNIRA
-    false, // UFRDL
-    false, // AUFBV
-    false, // AUFBVLIA
-    false, // AUFBVNIA
-    false, // AUFLIA
-    false, // AUFLRA
-    false, // AUFLIRA
-    false, // AUFNIA
-    false, // AUFNRA
-    false, // AUFNIRA
-    false, // QF_AX
-    true, // QF_BV
-    false, // QF_IDL
+    true,  // ALIA
+    true,  // ALRA
+    true,  // ALIRA
+    true,  // ANIA
+    true,  // ANRA
+    true,  // ANIRA
+    true,  // AUF
+    true,  // UFBV
+    true,  // UFBVLIA
+    true,  // UFIDL
+    true,  // UFLIA
+    true,  // UFLRA
+    true,  // UFLIRA
+    true,  // UFNIA
+    true,  // UFNRA
+    true,  // UFNIRA
+    true,  // UFRDL
+    true,  // AUFBV
+    true,  // AUFBVLIA
+    true,  // AUFBVNIA
+    true,  // AUFLIA
+    true,  // AUFLRA
+    true,  // AUFLIRA
+    true,  // AUFNIA
+    true,  // AUFNRA
+    true,  // AUFNIRA
+    true,  // QF_AX
+    true,  // QF_BV
+    true,  // QF_IDL
     true,  // QF_LIA
-    true, // QF_LRA
-    true, // QF_LIRA
-    true, // QF_NIA
-    true, // QF_NRA
-    true, // QF_NIRA
-    false, // QF_RDL
-    true, // QF_UF
-    true, // QF_ABV
-    false, // QF_ALIA
-    false, // QF_ALRA
-    false, // QF_ALIRA
-    false, // QF_ANIA
-    false, // QF_ANRA
-    false, // QF_ANIRA
-    false, // QF_AUF
-    true, // QF_UFBV
-    true, // QF_UFBVLIA
-    false, // QF_UFIDL
-    true, // QF_UFLIA
-    true, // QF_UFLRA
-    true, // QF_UFLIRA
-    true, // QF_UFNIA
-    true, // QF_UFNRA
-    true, // QF_UFNIRA
-    true, // QF_UFRDL
-    false, // QF_AUFBV
-    false, // QF_AUFBVLIA
-    false, // QF_AUFBVNIA
-    false, // QF_AUFLIA
-    false, // QF_AUFLRA
-    false, // QF_AUFLIRA
-    false, // QF_AUFNIA
-    false, // QF_AUFNRA
-    false, // QF_AUFNIRA
+    true,  // QF_LRA
+    true,  // QF_LIRA
+    true,  // QF_NIA
+    true,  // QF_NRA
+    true,  // QF_NIRA
+    true,  // QF_RDL
+    true,  // QF_UF
+    true,  // QF_ABV
+    true,  // QF_ALIA
+    true,  // QF_ALRA
+    true,  // QF_ALIRA
+    true,  // QF_ANIA
+    true,  // QF_ANRA
+    true,  // QF_ANIRA
+    true,  // QF_AUF
+    true,  // QF_UFBV
+    true,  // QF_UFBVLIA
+    true,  // QF_UFIDL
+    true,  // QF_UFLIA
+    true,  // QF_UFLRA
+    true,  // QF_UFLIRA
+    true,  // QF_UFNIA
+    true,  // QF_UFNRA
+    true,  // QF_UFNIRA
+    true,  // QF_UFRDL
+    true,  // QF_AUFBV
+    true,  // QF_AUFBVLIA
+    true,  // QF_AUFBVNIA
+    true,  // QF_AUFLIA
+    true,  // QF_AUFLRA
+    true,  // QF_AUFLIRA
+    true,  // QF_AUFNIA
+    true,  // QF_AUFNRA
+    true,  // QF_AUFNIRA
     false, // LOGIC_NONE
-    false, // LOGIC_ALL
+    true,  // LOGIC_ALL
+    false, // FP
+    false, // STRING
+    false, // DT
+    false, // SEQ
     false, // LOGIC_UNKNOWN
 };
+
+/*
+ * Operator vs. logic rules (enforced in pstack via these tables)
+ *
+ * Core (always allowed once a logic is set, and before set-logic):
+ *   Bool, true, false, not, and, or, xor, =>, =, distinct, ite
+ *
+ * Arrays (logic_has_arrays):
+ *   Array, select, store, (as const (Array σ τ) v)
+ *
+ * Bitvectors (logic_has_bitvectors):
+ *   BitVec, #b/#x literals, concat, extract, repeat, bvcomp, bvredand,
+ *   bvredor, bvnot, bvand, bvor, bvnand, bvnor, bvxor, bvxnor, bvneg,
+ *   bvadd, bvsub, bvmul, bvudiv, bvurem, bvsdiv, bvsrem, bvsmod, bvshl,
+ *   bvlshr, bvashr, zero_extend, sign_extend, rotate_left, rotate_right,
+ *   bvult, bvule, bvugt, bvuge, bvslt, bvsle, bvsgt, bvsge
+ *
+ * Arithmetic (logic_has_arithmetic = ints or reals):
+ *   +, -, *, <, <=, >, >=
+ * Integer-only (logic_has_ints):
+ *   Int, integer literals (also allowed if the logic has reals),
+ *   div, mod, abs, divisible
+ * Real-only (logic_has_reals):
+ *   Real, decimal literals, /
+ * Mixed Int+Real (both flags):
+ *   to_int, to_real
+ *
+ * Linear fragment (logic_is_linear_arith: LIA/LRA/LIRA and combinations):
+ *   *: at most one non-constant argument
+ *   /: every divisor must be a constant
+ *   div, mod, abs: forbidden
+ *
+ * Difference logic (logic_is_difference_logic: IDL/RDL and combinations):
+ *   +: at most one non-constant argument
+ *   -: at most two non-constant arguments
+ *   *: no non-constant arguments
+ *   /: forbidden
+ *   div, mod, abs: forbidden
+ *
+ * Nonlinear arithmetic (NIA/NRA/NIRA and combinations, and LOGIC_ALL):
+ *   no extra *, +, -, / shape restrictions
+ *
+ * Quantifiers (logic_has_quantifiers; absent from QF_*):
+ *   forall, exists
+ *
+ * Uninterpreted functions/sorts (logic_has_uf):
+ *   declare-fun, declare-sort (skipped if LOGIC_NONE), uninterpreted sorts
+ */
 
 bool logic_has_arrays[NUM_LOGICS] = {
     true,  // AX
@@ -257,7 +319,11 @@ bool logic_has_arrays[NUM_LOGICS] = {
     true,  // QF_AUFNRA
     true,  // QF_AUFNIRA
     false, // LOGIC_NONE
-    false, // LOGIC_ALL
+    true,  // LOGIC_ALL
+    false, // FP
+    false, // STRING
+    false, // DT
+    false, // SEQ
     false, // LOGIC_UNKNOWN
 };
 
@@ -329,7 +395,7 @@ bool logic_has_arithmetic[NUM_LOGICS] = {
     true,  // QF_UFNRA
     true,  // QF_UFNIRA
     true,  // QF_UFRDL
-    true,  // QF_AUFBV
+    false, // QF_AUFBV
     true,  // QF_AUFBVLIA
     true,  // QF_AUFBVNIA
     true,  // QF_AUFLIA
@@ -340,6 +406,10 @@ bool logic_has_arithmetic[NUM_LOGICS] = {
     true,  // QF_AUFNIRA
     false, // LOGIC_NONE
     true,  // LOGIC_ALL
+    false, // FP
+    false, // STRING
+    false, // DT
+    false, // SEQ
     false, // LOGIC_UNKNOWN
 };
 
@@ -422,6 +492,10 @@ bool logic_has_bitvectors[NUM_LOGICS] = {
     false, // QF_AUFNIRA
     false, // LOGIC_NONE
     true,  // LOGIC_ALL
+    false, // FP
+    false, // STRING
+    false, // DT
+    false, // SEQ
     false, // LOGIC_UNKNOWN
 };
 
@@ -504,6 +578,10 @@ bool logic_is_linear_arith[NUM_LOGICS] = {
     false, // QF_AUFNIRA
     false, // LOGIC_NONE
     false, // LOGIC_ALL
+    false, // FP
+    false, // STRING
+    false, // DT
+    false, // SEQ
     false, // LOGIC_UNKNOWN
 };
 
@@ -586,6 +664,10 @@ bool logic_is_difference_logic[NUM_LOGICS] = {
     false, // QF_AUFNIRA
     false, // LOGIC_NONE
     false, // LOGIC_ALL
+    false, // FP
+    false, // STRING
+    false, // DT
+    false, // SEQ
     false, // LOGIC_UNKNOWN
 };
 
@@ -668,6 +750,10 @@ bool logic_has_ints[NUM_LOGICS] = {
     true,  // QF_AUFNIRA
     false, // LOGIC_NONE
     true,  // LOGIC_ALL
+    false, // FP
+    false, // STRING
+    false, // DT
+    false, // SEQ
     false, // LOGIC_UNKNOWN
 };
 
@@ -750,6 +836,10 @@ bool logic_has_reals[NUM_LOGICS] = {
     true,  // QF_AUFNIRA
     false, // LOGIC_NONE
     true,  // LOGIC_ALL
+    false, // FP
+    false, // STRING
+    false, // DT
+    false, // SEQ
     false, // LOGIC_UNKNOWN
 };
 
@@ -832,6 +922,10 @@ bool logic_has_quantifiers[NUM_LOGICS] = {
     false, // QF_AUFNIRA
     false, // LOGIC_NONE
     true,  // LOGIC_ALL
+    false, // FP
+    false, // STRING
+    false, // DT
+    false, // SEQ
     false, // LOGIC_UNKNOWN
 };
 
@@ -914,6 +1008,10 @@ bool logic_has_uf[NUM_LOGICS] = {
     true,  // QF_AUFNIRA
     false, // LOGIC_NONE
     true,  // LOGIC_ALL
+    false, // FP
+    false, // STRING
+    false, // DT
+    false, // SEQ
     false, // LOGIC_UNKNOWN
 };
 

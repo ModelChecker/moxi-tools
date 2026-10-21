@@ -196,6 +196,16 @@ typedef enum moxi_logic {
 
     MOXI_LOGIC_NONE,
     MOXI_LOGIC_ALL,
+
+    /*
+     * Theories Yices cannot construct terms for. These names are recognized
+     * so (set-logic ...) can report "unsupported" rather than "unknown".
+     */
+    MOXI_FP,     // floating point
+    MOXI_STRING, // strings
+    MOXI_DT,     // algebraic datatypes
+    MOXI_SEQ,    // sequences
+
     MOXI_LOGIC_UNKNOWN,
 } moxi_logic_t;
 
