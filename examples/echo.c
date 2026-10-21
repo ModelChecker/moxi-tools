@@ -230,9 +230,25 @@ int main(int argc, char **argv) {
 
                 if (cmd->check_system.query.size > 0) {
                     for (i = 0; i < cmd->check_system.query.size; i++) {
-                        printf("  :query (%s", cmd->check_system.query.names[i]);
+                        printf("  :query (%s (", cmd->check_system.query.names[i]);
                         for (j = 0; j < cmd->check_system.query.sizes[i]; j++) {
-                            printf(" %s", cmd->check_system.query.strings[i][j]);
+                            printf("%s%s", j == 0 ? "" : " ", cmd->check_system.query.strings[i][j]);
+                        }
+                        printf("))\n");
+                    }
+                }
+
+                if (cmd->check_system.queries.size > 0) {
+                    size_t g, k;
+                    for (g = 0; g < cmd->check_system.queries.size; g++) {
+                        moxi_named_string_list_vector_t *group = &cmd->check_system.queries.data[g];
+                        printf("  :queries (");
+                        for (i = 0; i < group->size; i++) {
+                            printf("%s(%s (", i == 0 ? "" : " ", group->names[i]);
+                            for (k = 0; k < group->sizes[i]; k++) {
+                                printf("%s%s", k == 0 ? "" : " ", group->strings[i][k]);
+                            }
+                            printf("))");
                         }
                         printf(")\n");
                     }

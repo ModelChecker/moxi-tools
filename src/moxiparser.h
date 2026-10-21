@@ -22,6 +22,7 @@ typedef struct moxi_sort_vector moxi_sort_vector_t;
 typedef struct moxi_subsystem_vector moxi_subsystem_vector_t;
 typedef struct moxi_named_term_vector moxi_named_term_vector_t;
 typedef struct moxi_named_string_list_vector moxi_named_string_list_vector_t;
+typedef struct moxi_query_group_vector moxi_query_group_vector_t;
 typedef struct moxi_term_map moxi_term_map_t;
 
 
@@ -75,6 +76,16 @@ struct moxi_named_string_list_vector {
     char ***strings; // Array of arrays of strings of length `size`.
                      // `strings[i]` is an array of null-terminated strings of 
                      // length `sizes[i]`.
+};
+
+/**
+ * A vector of query groups. Each element is one `:queries` attribute: a list of
+ * named queries that share an interpretation of free symbols.
+ */
+struct moxi_query_group_vector {
+    uint32_t capacity;
+    uint32_t size;
+    moxi_named_string_list_vector_t *data;
 };
 
 /**
@@ -280,15 +291,14 @@ struct moxi_check_system {
     moxi_named_term_vector_t reachable;
     moxi_named_term_vector_t current;
 
-    // A query attribute is a named list of strings
+    // Each :query attribute is a named list of formula identifiers.
     // Example: ":query (q (a b c))"
     moxi_named_string_list_vector_t query;
 
-    // TODO: Add `queries`
-    // A queries attribute is list of named lists of strings
+    // Each :queries attribute is a group of named queries that share one
+    // interpretation of free symbols.
     // Example: ":queries ((q0 (a b c)) (q1 (d e f)))"
-    // moxi_string_vector_t queries_name;
-    // moxi_term_vector_t queries;
+    moxi_query_group_vector_t queries;
 };
 
 /**

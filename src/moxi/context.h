@@ -213,7 +213,9 @@ void moxi_check_system(moxi_context_t* ctx, char* str, size_t ninput,
                        term_t* assumption, size_t nfairness, char **fairness_name, term_t* fairness,
                        size_t nreachable, char **reachable_name, term_t* reachable, size_t ncurrent,
                        char **current_name, term_t* current, size_t nquery, char** query_name,
-                       size_t* query_size, char*** query);
+                       size_t* query_size, char*** query, size_t nqueries,
+                       size_t *queries_nquery, char ***queries_name,
+                       size_t **queries_size, char ****queries);
 
 /**
  * Finds a system in the context. Returns `NULL` if the system is not found.

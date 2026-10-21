@@ -14,6 +14,64 @@ static void *copy_bytes(const void *src, size_t n)
     return dst;
 }
 
+static char *copy_string(const char *src)
+{
+    size_t n;
+    char *dst;
+    if (src == NULL) {
+        return NULL;
+    }
+    n = strlen(src) + 1;
+    dst = malloc(n);
+    memcpy(dst, src, n);
+    return dst;
+}
+
+static void free_named_string_lists(size_t n, char **names, size_t *sizes, char ***lists)
+{
+    size_t i, j;
+    for (i = 0; i < n; i++) {
+        free(names[i]);
+        if (lists[i] != NULL) {
+            for (j = 0; j < sizes[i]; j++) {
+                free(lists[i][j]);
+            }
+            free(lists[i]);
+        }
+    }
+    free(names);
+    free(sizes);
+    free(lists);
+}
+
+static void copy_named_string_lists(size_t n, char **src_names, size_t *src_sizes,
+                                    char ***src_lists, char ***dst_names,
+                                    size_t **dst_sizes, char ****dst_lists)
+{
+    size_t i, j;
+    if (n == 0) {
+        *dst_names = NULL;
+        *dst_sizes = NULL;
+        *dst_lists = NULL;
+        return;
+    }
+    *dst_names = malloc(n * sizeof(char *));
+    *dst_sizes = malloc(n * sizeof(size_t));
+    *dst_lists = malloc(n * sizeof(char **));
+    for (i = 0; i < n; i++) {
+        (*dst_names)[i] = copy_string(src_names[i]);
+        (*dst_sizes)[i] = src_sizes[i];
+        if (src_sizes[i] == 0) {
+            (*dst_lists)[i] = NULL;
+            continue;
+        }
+        (*dst_lists)[i] = malloc(src_sizes[i] * sizeof(char *));
+        for (j = 0; j < src_sizes[i]; j++) {
+            (*dst_lists)[i][j] = copy_string(src_lists[i][j]);
+        }
+    }
+}
+
 void reset_command(command_t *cmd) 
 {
     switch (cmd->type) {
@@ -96,12 +154,15 @@ void reset_command(command_t *cmd)
             }
             free(cs->current_name);
             free(cs->current);
-            for (size_t i = 0; i < cs->nquery; i++) {
-                free(cs->query[i]);
+            free_named_string_lists(cs->nquery, cs->query_name, cs->query_size, cs->query);
+            for (size_t i = 0; i < cs->nqueries; i++) {
+                free_named_string_lists(cs->queries_nquery[i], cs->queries_name[i],
+                                        cs->queries_size[i], cs->queries[i]);
             }
-            free(cs->query);
-            free(cs->query_name);
-            free(cs->query_size);
+            free(cs->queries_nquery);
+            free(cs->queries_name);
+            free(cs->queries_size);
+            free(cs->queries);
             break;
         }
         case CMD_NONE:
@@ -297,7 +358,9 @@ void set_check_system_cmd(command_t* cmd, char* str, size_t ninput,
                           char** reachable_name, term_t* reachable,
                           size_t ncurrent, char** current_name, term_t* current,
                           size_t nquery, char** query_name, size_t* query_size,
-                          char*** query) 
+                          char*** query, size_t nqueries, size_t* queries_nquery,
+                          char*** queries_name, size_t** queries_size,
+                          char**** queries)
 {
     reset_command(cmd);
     cmd->type = CMD_CHECK_SYSTEM;
@@ -350,13 +413,27 @@ void set_check_system_cmd(command_t* cmd, char* str, size_t ninput,
     }
 
     cmd->data.check_system.nquery = nquery;
-    cmd->data.check_system.query_name = malloc(nquery * sizeof(char*));
-    cmd->data.check_system.query_size = malloc(nquery * sizeof(size_t));
-    cmd->data.check_system.query = malloc(nquery * sizeof(char**));
-    memcpy(cmd->data.check_system.query_name, query_name, nquery * sizeof(char*));
-    memcpy(cmd->data.check_system.query_size, query_size, nquery * sizeof(size_t));
-    for (size_t i = 0; i < nquery; i++) {
-        cmd->data.check_system.query[i] = malloc(query_size[i] * sizeof(char*));
-        memcpy(cmd->data.check_system.query[i], query[i], query_size[i] * sizeof(char*));
+    copy_named_string_lists(nquery, query_name, query_size, query,
+                            &cmd->data.check_system.query_name,
+                            &cmd->data.check_system.query_size,
+                            &cmd->data.check_system.query);
+
+    cmd->data.check_system.nqueries = nqueries;
+    if (nqueries == 0) {
+        cmd->data.check_system.queries_nquery = NULL;
+        cmd->data.check_system.queries_name = NULL;
+        cmd->data.check_system.queries_size = NULL;
+        cmd->data.check_system.queries = NULL;
+    } else {
+        cmd->data.check_system.queries_nquery = copy_bytes(queries_nquery, nqueries * sizeof(size_t));
+        cmd->data.check_system.queries_name = malloc(nqueries * sizeof(char **));
+        cmd->data.check_system.queries_size = malloc(nqueries * sizeof(size_t *));
+        cmd->data.check_system.queries = malloc(nqueries * sizeof(char ***));
+        for (size_t i = 0; i < nqueries; i++) {
+            copy_named_string_lists(queries_nquery[i], queries_name[i], queries_size[i],
+                                    queries[i], &cmd->data.check_system.queries_name[i],
+                                    &cmd->data.check_system.queries_size[i],
+                                    &cmd->data.check_system.queries[i]);
+        }
     }
 }

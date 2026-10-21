@@ -203,10 +203,18 @@ typedef struct check_system_cmd {
     char **current_name; // Names of the current variables of the system instance
     term_t *current;    // Current variables of the system instance
 
-    size_t nquery;      // Number of query attributes of the system instance
-    char **query_name;  // Names of the query attributes of the system instance
-    size_t *query_size; // Sizes of the query attributes of the system instance
-    char ***query;      // Query attributes of the system instance
+    size_t nquery;      // Number of :query attributes
+    char **query_name;  // Names of the :query attributes
+    size_t *query_size; // Number of formula names in each :query
+    char ***query;      // Formula names in each :query
+
+    // Each :queries attribute is a group of queries that share one interpretation
+    // of free symbols. `nqueries` is the number of such groups.
+    size_t nqueries;
+    size_t *queries_nquery;  // Number of queries in each group
+    char ***queries_name;    // Query names in each group
+    size_t **queries_size;   // Number of formula names for each query in each group
+    char ****queries;        // Formula names for each query in each group
 } check_system_cmd_t;
 
 /**
@@ -290,7 +298,9 @@ void set_check_system_cmd(command_t* cmd, char* str, size_t ninput,
                           char** reachable_name, term_t* reachable,
                           size_t ncurrent, char** current_name, term_t* current,
                           size_t nquery, char** query_name, size_t* query_size,
-                          char*** query);
+                          char*** query, size_t nqueries, size_t* queries_nquery,
+                          char*** queries_name, size_t** queries_size,
+                          char**** queries);
 
 void set_none_cmd(command_t* cmd);
 

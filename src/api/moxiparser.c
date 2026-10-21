@@ -279,6 +279,9 @@ void append_moxi_named_term_vector(moxi_named_term_vector_t *vector, const char 
  */
 void init_moxi_named_string_list_vector(moxi_named_string_list_vector_t *vector, uint32_t capacity)
 {
+    if (capacity == 0) {
+        capacity = 1;
+    }
     vector->names = malloc(capacity * sizeof(char *));
     vector->sizes = malloc(capacity * sizeof(uint32_t));
     vector->strings = malloc(capacity * sizeof(char **));
@@ -328,6 +331,28 @@ void append_moxi_named_string_list_vector(moxi_named_string_list_vector_t *vecto
         vector->strings = realloc(vector->strings, vector->capacity * sizeof(char **));
     }
     vector->size++;
+}
+
+static void init_moxi_query_group_vector(moxi_query_group_vector_t *vector, uint32_t size)
+{
+    vector->capacity = size;
+    vector->size = size;
+    if (size == 0) {
+        vector->data = NULL;
+        return;
+    }
+    vector->data = calloc(size, sizeof(moxi_named_string_list_vector_t));
+}
+
+static void delete_moxi_query_group_vector(moxi_query_group_vector_t *vector)
+{
+    for (size_t i = 0; i < vector->size; i++) {
+        delete_moxi_named_string_list_vector(&vector->data[i]);
+    }
+    free(vector->data);
+    vector->data = NULL;
+    vector->size = 0;
+    vector->capacity = 0;
 }
 
 void init_moxi_term_map(moxi_term_map_t *map, uint32_t capacity)
@@ -381,6 +406,7 @@ void reset_moxi_command(moxi_command_t *command)
         delete_moxi_named_term_vector(&command->check_system.reachable);
         delete_moxi_named_term_vector(&command->check_system.current);
         delete_moxi_named_string_list_vector(&command->check_system.query);
+        delete_moxi_query_group_vector(&command->check_system.queries);
         break;
     default:
         break;
@@ -645,9 +671,23 @@ moxi_command_t *moxi_parser_next_command(moxi_parser_t *parser)
                 append_moxi_named_string_list_vector(
                     &check_system->query,
                     internal_cmd->data.check_system.query_name[i],
-                    internal_cmd->data.check_system.query_size[i],
+                    (uint32_t) internal_cmd->data.check_system.query_size[i],
                     internal_cmd->data.check_system.query[i]
                 );
+            }
+
+            init_moxi_query_group_vector(&check_system->queries, (uint32_t) internal_cmd->data.check_system.nqueries);
+            for (size_t g = 0; g < internal_cmd->data.check_system.nqueries; g++) {
+                size_t n = internal_cmd->data.check_system.queries_nquery[g];
+                init_moxi_named_string_list_vector(&check_system->queries.data[g], n == 0 ? 1 : (uint32_t) n);
+                for (size_t i = 0; i < n; i++) {
+                    append_moxi_named_string_list_vector(
+                        &check_system->queries.data[g],
+                        internal_cmd->data.check_system.queries_name[g][i],
+                        (uint32_t) internal_cmd->data.check_system.queries_size[g][i],
+                        internal_cmd->data.check_system.queries[g][i]
+                    );
+                }
             }
             break;
         }

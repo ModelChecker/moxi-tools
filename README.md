@@ -75,7 +75,8 @@ variable vectors, the `init_term`, `trans_term`, and `inv_term` formulas, and
 any `subsystems`. `moxi_term_map_find(system->next_vars, t)` returns the primed
 next-state variable for `t`. `MOXI_CHECK_SYSTEM` uses the same variable layout
 on `cmd->check_system`, plus named `assumption`, `fairness`, `reachable`, and
-`current` formulas and `query` (named lists of those identifiers).
+`current` formulas, `query` (named lists of those identifiers), and `queries`
+(groups of named lists that share one interpretation of free symbols).
 
 See `examples/echo.c` for a complete client and `src/moxiparser.h` for the
 command layout.

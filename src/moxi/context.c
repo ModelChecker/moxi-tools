@@ -525,7 +525,9 @@ void moxi_check_system(moxi_context_t* ctx, char* str, size_t ninput,
                        size_t nreachable, char** reachable_name,
                        term_t* reachable, size_t ncurrent, char** current_name,
                        term_t* current, size_t nquery, char** query_name,
-                       size_t* query_size, char*** query) 
+                       size_t* query_size, char*** query, size_t nqueries,
+                       size_t *queries_nquery, char ***queries_name,
+                       size_t **queries_size, char ****queries)
 {
     const sys_table_entry_t *sys = moxi_find_system(ctx, str);
     if (sys == NULL) {
@@ -540,7 +542,8 @@ void moxi_check_system(moxi_context_t* ctx, char* str, size_t ninput,
                          assumption_name, assumption, nfairness, fairness_name,
                          fairness, nreachable, reachable_name, reachable,
                          ncurrent, current_name, current, nquery, query_name,
-                         query_size, query);
+                         query_size, query, nqueries, queries_nquery,
+                         queries_name, queries_size, queries);
 }
 
 const sys_table_entry_t *moxi_find_system(moxi_context_t *ctx, char *str)

@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <yices.h>
 
@@ -3400,6 +3401,64 @@ void eval_define_system(pstack_t *pstack)
     pstack_pop_frame(pstack);
 }
 
+static void named_lists_push(size_t *n, size_t *cap, char ***names, size_t **sizes,
+                             char ****lists, char *name, size_t nlist, char **list)
+{
+    if (*n == *cap) {
+        size_t new_cap = (*cap == 0) ? 4 : (*cap * 2);
+        *names = realloc(*names, new_cap * sizeof(char *));
+        *sizes = realloc(*sizes, new_cap * sizeof(size_t));
+        *lists = realloc(*lists, new_cap * sizeof(char **));
+        *cap = new_cap;
+    }
+    (*names)[*n] = name;
+    (*sizes)[*n] = nlist;
+    (*lists)[*n] = list;
+    (*n)++;
+}
+
+/**
+ * Reads `<symbol> <symbol>*` as a query name plus formula names. `*i` must
+ * point at the query name and is advanced past the formula names.
+ */
+static void parse_check_query(pstack_t *pstack, uint32_t *i, uint32_t nelems,
+                              str_set_t *formula_names, str_set_t *query_names,
+                              char **out_name, size_t *out_n, char ***out_list)
+{
+    char *qname, *fname;
+    size_t n, cap;
+    char **list;
+
+    check_elem_tag(pstack, *i, TAG_SYMBOL);
+    qname = get_elem_symbol(pstack, *i);
+    if (in_str_set(query_names, qname)) {
+        PRINT_ERROR("%s already defined", qname);
+        longjmp(pstack->env, BAD_SYMBOL_KIND);
+    }
+    str_set_add(query_names, qname, strlen(qname));
+    (*i)++;
+
+    n = 0;
+    cap = 4;
+    list = malloc(cap * sizeof(char *));
+    while (*i < nelems && get_elem_tag(pstack, *i) == TAG_SYMBOL) {
+        fname = get_elem_symbol(pstack, *i);
+        if (!in_str_set(formula_names, fname)) {
+            PRINT_ERROR("formula %s not defined", fname);
+            longjmp(pstack->env, BAD_SYMBOL_KIND);
+        }
+        if (n == cap) {
+            cap *= 2;
+            list = realloc(list, cap * sizeof(char *));
+        }
+        list[n++] = fname;
+        (*i)++;
+    }
+    *out_name = qname;
+    *out_n = n;
+    *out_list = list;
+}
+
 /**
  * Only :assumption, :fairness, :reachable, :current, :query, and :queries
  * attributes are handled here, :input, :output, and :local have all been dealt
@@ -3495,8 +3554,20 @@ void eval_check_system(pstack_t *pstack)
     init_str_vector(&reachable_name, 0);
     init_str_vector(&current_name, 0);
 
-    size_t nquery = 0;
-    char *name, *next_name;
+    size_t nquery = 0, query_cap = 0;
+    char **query_name = NULL;
+    size_t *query_size = NULL;
+    char ***query = NULL;
+
+    size_t nqueries = 0, queries_cap = 0;
+    size_t *queries_nquery = NULL;
+    size_t *queries_gcap = NULL;
+    char ***queries_name = NULL;
+    size_t **queries_size = NULL;
+    char ****queries = NULL;
+
+    char *name, *next_name, *qname, **qlist;
+    size_t qn;
 
     i = 2;
     j = 0;
@@ -3597,61 +3668,50 @@ void eval_check_system(pstack_t *pstack)
             i += 3;
             break;
         case TOK_KW_QUERY:
-            // <query-attr> <symbol> <symbol>*
+            // :query ( <symbol> ( <symbol>+ ) )
             i++;
-            check_elem_tag(pstack, i, TAG_SYMBOL);
-            name = get_elem_symbol(pstack, i);
-            if (in_str_set(&query_names, name)) {
-                PRINT_ERROR("%s already defined", name);
-                longjmp(pstack->env, BAD_SYMBOL_KIND);
-            }
-            str_set_add(&query_names, name, strlen(name));
-            i++;
-            while (i < nelems && get_elem_tag(pstack, i) == TAG_SYMBOL) {
-                name = get_elem_symbol(pstack, i);
-                if (!in_str_set(&formula_names, name)) {
-                    PRINT_ERROR("formula %s not defined", name);
-                    longjmp(pstack->env, BAD_SYMBOL_KIND);
-                }
-                i++;
-            }
+            parse_check_query(pstack, &i, nelems, &formula_names, &query_names,
+                              &qname, &qn, &qlist);
+            named_lists_push(&nquery, &query_cap, &query_name, &query_size, &query,
+                             qname, qn, qlist);
             break;
-        case TOK_KW_QUERIES:
-            // <queries-attr> (<query-attr> <symbol> <symbol>*)*
+        case TOK_KW_QUERIES: {
+            // :queries ( ( <symbol> ( <symbol>+ ) )+ )
+            size_t g;
             i++;
+            if (nqueries == queries_cap) {
+                queries_cap = (queries_cap == 0) ? 4 : (queries_cap * 2);
+                queries_nquery = realloc(queries_nquery, queries_cap * sizeof(size_t));
+                queries_gcap = realloc(queries_gcap, queries_cap * sizeof(size_t));
+                queries_name = realloc(queries_name, queries_cap * sizeof(char **));
+                queries_size = realloc(queries_size, queries_cap * sizeof(size_t *));
+                queries = realloc(queries, queries_cap * sizeof(char ***));
+            }
+            g = nqueries;
+            queries_nquery[g] = 0;
+            queries_gcap[g] = 0;
+            queries_name[g] = NULL;
+            queries_size[g] = NULL;
+            queries[g] = NULL;
+            nqueries++;
             while (i < nelems && get_elem_tag(pstack, i) == TAG_ATTR &&
                    get_elem_tok(pstack, i) == TOK_KW_QUERY) {
                 i++;
-                check_elem_tag(pstack, i, TAG_SYMBOL);
-                name = get_elem_symbol(pstack, i);
-                if (in_str_set(&query_names, name)) {
-                    PRINT_ERROR("%s already defined", name);
-                    longjmp(pstack->env, BAD_SYMBOL_KIND);
-                }
-                str_set_add(&query_names, name, strlen(name));
-                i++;
-                while (i < nelems && get_elem_tag(pstack, i) == TAG_SYMBOL) {
-                    name = get_elem_symbol(pstack, i);
-                    if (!in_str_set(&formula_names, name)) {
-                        PRINT_ERROR("formula %s not defined", name);
-                        longjmp(pstack->env, BAD_SYMBOL_KIND);
-                    }
-                    i++;
-                }
+                parse_check_query(pstack, &i, nelems, &formula_names, &query_names,
+                                  &qname, &qn, &qlist);
+                named_lists_push(&queries_nquery[g], &queries_gcap[g], &queries_name[g],
+                                 &queries_size[g], &queries[g], qname, qn, qlist);
             }
             break;
+        }
         default:
             PRINT_ERROR("bad attribute for check-system");
             longjmp(pstack->env, BAD_ATTR);
         }
     }
 
-    size_t *query_size = malloc(nquery * sizeof(size_t));
-    char **query_name = malloc(nquery * sizeof(char*));
-    char ***query = malloc(nquery * sizeof(char **));
-
     moxi_check_system(ctx, symbol, ninput, input, input_next, noutput, output, output_next, nlocal,
-                      local, local_next, assumption.size, assumption_name.data, assumption.data, fairness.size, fairness_name.data, fairness.data, reachable.size, reachable_name.data, reachable.data, current.size, current_name.data, current.data, nquery, query_name, query_size, query);
+                      local, local_next, assumption.size, assumption_name.data, assumption.data, fairness.size, fairness_name.data, fairness.data, reachable.size, reachable_name.data, reachable.data, current.size, current_name.data, current.data, nquery, query_name, query_size, query, nqueries, queries_nquery, queries_name, queries_size, queries);
     if (ctx->status) {
         PRINT_ERROR("check-system failed");
         longjmp(pstack->env, BAD_TERM);
@@ -3663,9 +3723,26 @@ void eval_check_system(pstack_t *pstack)
     free(input_next);
     free(output_next);
     free(local_next);
-    free(query_size);
-    free(query_name);
+    for (j = 0; j < nquery; j++) {
+        free(query[j]);
+    }
     free(query);
+    free(query_name);
+    free(query_size);
+    for (j = 0; j < nqueries; j++) {
+        size_t k;
+        for (k = 0; k < queries_nquery[j]; k++) {
+            free(queries[j][k]);
+        }
+        free(queries[j]);
+        free(queries_name[j]);
+        free(queries_size[j]);
+    }
+    free(queries);
+    free(queries_name);
+    free(queries_size);
+    free(queries_nquery);
+    free(queries_gcap);
     delete_str_set(&formula_names);
     delete_str_set(&query_names);
     delete_int32_vector(&assumption);
